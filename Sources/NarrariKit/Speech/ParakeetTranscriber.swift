@@ -120,7 +120,7 @@ public actor ParakeetTranscriber: Transcriber {
     private func startLoading(_ model: ParakeetModel) -> Task<AsrManager, any Error> {
         loadedModel = model
         let directory = store.directory(named: model.folder)
-        let isPresent = downloadsIfMissing || store.isPresent(named: model.folder)
+        let isPresent = downloadsIfMissing || store.isPresent(model)
         let onStateChange = onStateChange
         loadGeneration += 1
         let generation = loadGeneration

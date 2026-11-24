@@ -33,7 +33,7 @@ public struct FileTranscription: Sendable {
         _ url: URL, keepingAudioAt kept: URL? = nil, upTo limit: TimeInterval? = AudioFileDecoder.maximumDuration,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> Transcript {
-        guard store.isPresent(named: settings.value(SpeechSettings.localModel).folder) else {
+        guard store.isPresent(settings.value(SpeechSettings.localModel)) else {
             throw TranscriberError.notDownloaded
         }
         let pieces = try await SpeechPieces(url: url, upTo: limit)

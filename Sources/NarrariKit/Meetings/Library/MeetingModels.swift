@@ -227,7 +227,7 @@ public struct SharedModel {
         return Self(
             size: { ModelCatalogue.speech.first { $0.id == chosen().folder }?.metrics.diskBytes ?? 0 },
             state: { status.state },
-            isOnThisMac: { store.isPresent(named: chosen().folder) },
+            isOnThisMac: { store.isPresent(chosen()) },
             download: { (try? await transcriber.load()) != nil }
         )
     }

@@ -60,7 +60,7 @@ public actor Vocabulary {
     public func prepare(words: [String]) async {
         let words = words.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         // It listens alongside the speech model, so it waits until that model is on this Mac.
-        guard store.isPresent(named: settings.value(SpeechSettings.localModel).folder) else { return release() }
+        guard store.isPresent(settings.value(SpeechSettings.localModel)) else { return release() }
         // A save that leaves the words alone, such as a new replacement, keeps the session or the load in progress.
         guard words != self.words || (session == nil && !isLoading) else { return }
         self.words = words

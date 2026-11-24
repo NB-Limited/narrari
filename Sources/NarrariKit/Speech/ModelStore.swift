@@ -1,3 +1,4 @@
+import FluidAudio
 import Foundation
 
 public struct ModelStore: Sendable {
@@ -13,8 +14,20 @@ public struct ModelStore: Sendable {
         root.appending(path: name, directoryHint: .isDirectory)
     }
 
+    // A download cut off part way leaves its folder holding `.partial` files, so the folder alone is no model.
     public func isPresent(named name: String) -> Bool {
-        FileManager.default.fileExists(atPath: directory(named: name).path)
+        let folder = directory(named: name)
+        guard FileManager.default.fileExists(atPath: folder.path) else { return false }
+        let files = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: nil)
+        while let file = files?.nextObject() as? URL {
+            if file.pathExtension == "partial" { return false }
+        }
+        return true
+    }
+
+    // Every file the speech model loads is there whole, by the list FluidAudio downloads; a cut-off download downloads again.
+    public func isPresent(_ model: ParakeetModel) -> Bool {
+        AsrModels.modelsExist(at: directory(named: model.folder), version: model.version)
     }
 
     public func bytesOnDisk(named name: String) throws -> Int64 {
