@@ -40,7 +40,7 @@ struct SoundsTests {
     private let clock = TestClock()
 
     private func sounds() -> Sounds {
-        Sounds(settings: settings.store, clock: clock, load: speaker.load)
+        Sounds(settings: settings.store, clock: clock, load: speaker.load, connect: {})
     }
 
     // Sounds waits out each sound on the clock, so the test moves the clock past it.
@@ -69,6 +69,20 @@ struct SoundsTests {
 
         #expect(speaker.played == ["wood-start.wav", "wood-stop.wav", "wood-discard.wav"])
         #expect(speaker.loaded.count == loadsBeforePlaying)
+    }
+
+    @Test func the_clips_load_once_the_output_is_joined_so_a_launch_never_waits_on_it() async {
+        let joined = AsyncStream<Void>.makeStream()
+        let sounds = Sounds(settings: settings.store, clock: clock, load: speaker.load) {
+            for await _ in joined.stream { return }
+        }
+
+        #expect(speaker.loaded.isEmpty)
+        joined.continuation.yield()
+        await until { speaker.loaded.count == Sound.allCases.count }
+
+        await play(.start, on: sounds)
+        #expect(speaker.played == ["trace-start.wav"])
     }
 
     @Test func nothing_plays_with_the_switch_off() async {
