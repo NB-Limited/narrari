@@ -1,9 +1,22 @@
 import Foundation
 
-public enum CleanupEngineError: Error, Equatable {
-    case modelUnavailable(reason: String)
-    case generationFailed(reason: String)
+public enum CleanupEngineError: ProblemError, Equatable {
+    case modelUnavailable
+    case generationFailed(status: Int? = nil)
     case replyTooLong
+
+    public var problem: Problem {
+        switch self {
+        case .modelUnavailable: Problem("cleanup.model-unavailable", "The clean-up model did not load. Try again in Settings, Clean-up.", canRetry: true)
+        case .generationFailed: Problem("cleanup.failed", "Clean-up failed. Try again, or choose another model.", canRetry: true)
+        case .replyTooLong: Problem("cleanup.too-long", "The clean-up reply ran too long. Try again.", canRetry: true)
+        }
+    }
+
+    public var status: Int? {
+        if case .generationFailed(let status) = self { return status }
+        return nil
+    }
 }
 
 // How long a reply may grow from the transcript. The in-app model counts tokens and stops there; a service's reply is

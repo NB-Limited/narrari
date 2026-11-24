@@ -3,8 +3,12 @@ import CoreAudio
 import Foundation
 import Synchronization
 
-public enum MeetingRecorderError: Error, Equatable {
+public enum MeetingRecorderError: ProblemError, Equatable {
     case lowDisk
+
+    public var problem: Problem {
+        Problem("meeting.low-disk", "Not enough disk space to record. Free some space, then start again.", canRetry: true)
+    }
 }
 
 public struct MeetingRecording: Sendable, Equatable {

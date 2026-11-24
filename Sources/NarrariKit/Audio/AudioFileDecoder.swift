@@ -1,19 +1,16 @@
 import AVFoundation
 
-public enum AudioFileError: Error, Equatable {
+public enum AudioFileError: ProblemError, Equatable, CaseIterable {
     case unreadable
     case noAudioTrack
-    case tooLong(hours: Double)
+    case tooLong
 
-    public var message: String {
+    public var problem: Problem {
         switch self {
-        case .unreadable: "This file can't be read. Use an audio or video file, such as M4A, MP3, WAV, FLAC, MP4 or MOV."
-        case .noAudioTrack: "This file has no sound to transcribe."
-        case .tooLong(let hours):
-            """
-            This file is \(hours.formatted(.number.precision(.fractionLength(1)))) hours long. \
-            Narrari transcribes files up to \(Int(AudioFileDecoder.maximumDuration / 3600)) hours.
-            """
+        case .unreadable: Problem("audio-file.unreadable", "This file can't be read. Use an audio or video file, such as M4A, MP3, WAV, FLAC, MP4 or MOV.")
+        case .noAudioTrack: Problem("audio-file.no-sound", "This file has no sound to transcribe. Use a file with an audio track.")
+        case .tooLong:
+            Problem("audio-file.too-long", "This file is longer than \(Int(AudioFileDecoder.maximumDuration / 3600)) hours. Use a shorter file.")
         }
     }
 }
@@ -75,7 +72,7 @@ public enum AudioFileDecoder {
             guard let track = tracks.first else { throw AudioFileError.noAudioTrack }
 
             duration = try await asset.load(.duration).seconds
-            if let limit, duration > limit { throw AudioFileError.tooLong(hours: duration / 3600) }
+            if let limit, duration > limit { throw AudioFileError.tooLong }
 
             reader = try AVAssetReader(asset: asset)
             output = AVAssetReaderTrackOutput(track: track, outputSettings: [

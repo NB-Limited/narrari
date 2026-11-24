@@ -8,7 +8,7 @@ public struct ModelRow: Sendable, Equatable {
         case gettingReady
         case downloaded
         case inUse
-        case failed(String)
+        case failed(Problem)
     }
 
     public enum Action: Sendable, Equatable {
@@ -84,7 +84,7 @@ public struct ModelRow: Sendable, Equatable {
     }
 
     public var failure: String? {
-        if case .failed(let reason) = status { return "Could not load: \(reason)" }
+        if case .failed(let problem) = status { return problem.message }
         return nil
     }
 }

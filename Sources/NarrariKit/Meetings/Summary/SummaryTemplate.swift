@@ -1,10 +1,19 @@
 import Foundation
 
-public struct SummaryTemplateError: LocalizedError, Equatable {
-    public let errorDescription: String?
+public enum SummaryTemplateError: ProblemError, Equatable, CaseIterable {
+    case empty
+    case headingWithoutInstruction
+    case noHeadings
+    case missing
 
-    init(_ message: String) {
-        errorDescription = message
+    public var problem: Problem {
+        switch self {
+        case .empty: Problem("template.empty", "The summary template is empty. Write its headings in Settings, Summaries.", canRetry: true)
+        case .headingWithoutInstruction:
+            Problem("template.no-instruction", "A heading in the summary template has nothing under it. Fix it in Settings, Summaries.", canRetry: true)
+        case .noHeadings: Problem("template.no-headings", "The summary template has no headings. Start each with # in Settings, Summaries.", canRetry: true)
+        case .missing: Problem("template.missing", "The summary template is gone. Choose another, then try again.", canRetry: true)
+        }
     }
 }
 
@@ -23,14 +32,14 @@ public struct SummaryTemplate: Sendable, Equatable, Identifiable {
 
     public init(id: String, markdown: String) throws {
         var lines = markdown.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        guard !lines.isEmpty else { throw SummaryTemplateError("The template \(id) is empty.") }
+        guard !lines.isEmpty else { throw SummaryTemplateError.empty }
         let name = Self.stripped(lines.removeFirst())
         var sections: [Section] = []
         var heading: String?
         var instruction: [String] = []
         func close() throws {
             guard let heading else { return }
-            guard !instruction.isEmpty else { throw SummaryTemplateError("The heading \(heading) in the template \(id) has no instruction.") }
+            guard !instruction.isEmpty else { throw SummaryTemplateError.headingWithoutInstruction }
             sections.append(Section(heading: heading, instruction: instruction.joined(separator: " ")))
         }
         for line in lines {
@@ -43,7 +52,7 @@ public struct SummaryTemplate: Sendable, Equatable, Identifiable {
             }
         }
         try close()
-        guard !sections.isEmpty else { throw SummaryTemplateError("The template \(id) has no headings.") }
+        guard !sections.isEmpty else { throw SummaryTemplateError.noHeadings }
         self.id = id
         self.name = name.isEmpty ? id : name
         self.sections = sections

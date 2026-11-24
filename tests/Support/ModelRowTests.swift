@@ -10,7 +10,7 @@ struct ModelRowTests {
         #expect(row(.preparing(fraction: 0.46, isDownloading: true), true, 0).progressLine == "Downloading, 46%")
         #expect(row(.missing, false, 4096).action == nil)
         #expect(row(.ready, true, 4096).action == nil)
-        #expect(row(.failed(reason: "offline"), true, 0).action == .retry)
+        #expect(row(.failed(TranscriberError.modelUnavailable.problem), true, 0).action == .retry)
     }
 
     @Test func the_radio_is_filled_for_the_chosen_model_and_open_only_for_one_that_can_be_chosen() {
@@ -64,6 +64,6 @@ struct ModelRowTests {
         #expect(row(.preparing(fraction: 0, isDownloading: false), 0).group == .toDownload)
         #expect(row(.preparing(fraction: 0.5, isDownloading: true), 4096).group == .toDownload)
         #expect(row(.missing, 4096).group == .onThisMac)
-        #expect(row(.failed(reason: "offline"), 0).group == .toDownload)
+        #expect(row(.failed(TranscriberError.modelUnavailable.problem), 0).group == .toDownload)
     }
 }

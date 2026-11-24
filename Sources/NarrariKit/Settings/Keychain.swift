@@ -1,9 +1,21 @@
 import Foundation
 import Security
 
-public enum KeychainError: Error, Equatable {
+public enum KeychainError: ProblemError, Equatable {
     case unexpectedStatus(OSStatus)
     case unreadable
+
+    public var problem: Problem {
+        switch self {
+        case .unexpectedStatus: Problem("keychain.failed", "The Keychain refused the key. Enter it again.", canRetry: true)
+        case .unreadable: Problem("keychain.unreadable", "The key in the Keychain can't be read. Enter it again.")
+        }
+    }
+
+    public var status: Int? {
+        if case .unexpectedStatus(let status) = self { return Int(status) }
+        return nil
+    }
 }
 
 // What Narrari needs from the Keychain, so a test can stand in for it.

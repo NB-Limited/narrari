@@ -183,7 +183,7 @@ public final class ModesPageModel {
             return true
         } catch let error as ModeError {
             Log.failure("modes-edit", error: error)
-            storeError = "That change could not be made to your modes. Open this page again and retry."
+            storeError = error.problem.message
         } catch is DecodingError {
             appear()
         } catch {

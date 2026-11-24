@@ -28,7 +28,7 @@ struct SpeechPiecesTests {
     @Test func a_limit_refuses_a_longer_file_and_none_takes_any_length() async throws {
         let file = try toneWithAGap()
 
-        await #expect(throws: AudioFileError.tooLong(hours: 12.0 / 3_600)) { try await SpeechPieces(url: file, upTo: 10) }
+        await #expect(throws: AudioFileError.tooLong) { try await SpeechPieces(url: file, upTo: 10) }
         #expect(try await SpeechPieces(url: file, upTo: nil).duration == 12)
     }
 }

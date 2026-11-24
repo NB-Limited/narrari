@@ -266,7 +266,7 @@ public final class DictationSession {
             record(entry(for: dictation, audioFile: HistoryEntry.audioFileName(for: dictation.id)))
             announceHistoryChange()
         }
-        if case .failed = modelState { show(.modelFailed) }
+        if case .failed = modelState { show(.speech(.modelUnavailable)) }
         paster.saveClipboard()
         startLivePreview()
         queueFeedback { [sounds, media] in

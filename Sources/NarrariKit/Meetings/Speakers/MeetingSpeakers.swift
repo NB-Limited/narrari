@@ -7,10 +7,12 @@ public struct MeetingSpeakers: MeetingStep {
     // The track, and how many speakers to find in it, or nil to let the split decide.
     public typealias Split = @Sendable (URL, Int?) async throws -> SpeakerSplit
 
-    public enum Failure: LocalizedError {
+    public enum Failure: ProblemError, CaseIterable {
         case noWordTimings
 
-        public var errorDescription: String? { "The transcript has no word timings. Transcribe again." }
+        public var problem: Problem {
+            Problem("speakers.no-word-timings", "The transcript has no word timings. Transcribe the meeting again.")
+        }
     }
 
     // A speaker with less speech than this is folded into whoever spoke nearest in time.

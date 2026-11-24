@@ -1,10 +1,19 @@
 import Foundation
 
-public enum ModeError: Error, Equatable {
+public enum ModeError: ProblemError, Equatable {
     case unknownMode(String)
     case duplicateMode(String)
     case isGlobalDefault
     case defaultNotInList
+
+    public var problem: Problem {
+        switch self {
+        case .unknownMode: Problem("modes.unknown", "That mode no longer exists. Open this page again.")
+        case .duplicateMode: Problem("modes.duplicate", "That mode exists already. Open this page again.")
+        case .isGlobalDefault: Problem("modes.global-default", "The default for every app can't be deleted. Make another mode the default first.")
+        case .defaultNotInList: Problem("modes.default-not-listed", "The app's default must be one of its modes. Add it to the list first.")
+        }
+    }
 }
 
 public struct AppModes: Codable, Sendable, Equatable {

@@ -2,28 +2,22 @@ import Foundation
 import Observation
 
 public enum MeetingNotice: Sendable, Equatable {
-    case refused(Notice)
-    case lowDisk
+    case refused(RecorderError)
+    case failed(Problem)
     case stoppedForLowDisk
-    case failed
     case liveText(LiveTextNotice)
 
+    static let couldNotStart = Problem("meeting.start-failed", "The meeting could not start. Try again.", canRetry: true)
+
     init(startError error: any Error) {
-        switch error {
-        case MeetingRecorderError.lowDisk: self = .lowDisk
-        case RecorderError.microphoneDenied: self = .refused(.microphoneDenied)
-        case RecorderError.microphoneAccessRequested: self = .refused(.microphoneAccessRequested)
-        case RecorderError.noInput, RecorderError.startFailed: self = .refused(.microphoneUnavailable)
-        default: self = .failed
-        }
+        self = if let refusal = error as? RecorderError { .refused(refusal) } else { .failed(error.problem(or: Self.couldNotStart)) }
     }
 
     public var message: String {
         switch self {
-        case .refused(let notice): notice.message
-        case .lowDisk: "Not enough disk space to record"
-        case .stoppedForLowDisk: "Stopped: the disk is nearly full"
-        case .failed: "The meeting could not start"
+        case .refused(let error): error.problem.message
+        case .failed(let problem): problem.message
+        case .stoppedForLowDisk: "Recording stopped: the disk is nearly full. Free some space."
         case .liveText(let notice): notice.message
         }
     }

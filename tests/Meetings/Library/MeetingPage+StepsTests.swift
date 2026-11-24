@@ -72,8 +72,8 @@ struct MeetingPageStepsTests {
     }
 
     @Test func a_tab_with_nothing_to_show_says_why() async throws {
-        let (failed, _) = try await page({ $0.echo = Meeting.Step(.done); $0.transcript = Meeting.Step(.failed, reason: "Unreadable.") },
-                                         fetch: FakeModelFetch(store: models))
+        let unreadable = Meeting.Step(.failed, problem: AudioFileError.unreadable.problem.code)
+        let (failed, _) = try await page({ $0.echo = Meeting.Step(.done); $0.transcript = unreadable }, fetch: FakeModelFetch(store: models))
         let allDone: (inout Meeting.Steps) -> Void = { steps in
             (steps.echo, steps.transcript, steps.speakers, steps.summary) = (.init(.done), .init(.done), .init(.done), .init(.done))
         }
@@ -82,7 +82,10 @@ struct MeetingPageStepsTests {
         try await store.write([TranscriptSegment(start: 0, end: 2, speaker: "owner", text: "Okay, thanks.", track: .mic)], of: short.meeting.id)
         await short.load()
 
+        let failedRow = try #require(failed.steps?.first { $0.id == .transcript })
+
         #expect(failed.emptyLine(for: .transcript) == "The transcript could not be written.")
+        #expect(failedRow.text(at: .now) == AudioFileError.unreadable.problem.message && failedRow.action == nil)
         #expect(silent.emptyLine(for: .transcript) == "No speech was heard." && silent.emptyLine(for: .summary) == "No speech was heard.")
         #expect(short.emptyLine(for: .summary) == "Too short to summarise. The transcript holds every word.")
     }
@@ -92,7 +95,7 @@ struct MeetingPageStepsTests {
         let (page, library) = try await page({ steps in
             steps.echo = Meeting.Step(.done)
             steps.transcript = Meeting.Step(.done)
-            steps.speakers = Meeting.Step(.waiting, reason: "Waiting for the speaker model to be downloaded.")
+            steps.speakers = Meeting.Step(.waiting, for: .speakerModel)
         }, fetch: fetch)
 
         library.begin([.speakerSplit])

@@ -132,12 +132,12 @@ struct SummaryServiceTests {
     }
 
     private static let refusals: [(String, Int, String?)] = [
-        (" \n", 10, "The model gave an empty summary."),
+        (" \n", 10, "The model gave an empty summary. Try again, or choose another model."),
         (
             "## Überblick\nDas Team verschiebt die Veröffentlichung der App auf den neunzehnten März, weil die Zahlung nicht geht.",
-            10, "The summary came back in a language the meeting was not held in."
+            10, "The summary came back in another language. Try again, or set the meeting's language."
         ),
-        ("## Overview\nRelease moved.", 10, "The summary is too short for a meeting this long."),
+        ("## Overview\nRelease moved.", 10, "The summary is too short for a meeting this long. Try again, or choose another model."),
         ("## Overview\nRelease moved.", 4, nil)
     ]
 
@@ -149,7 +149,9 @@ struct SummaryServiceTests {
 
         await processing(service(FakeSummaryEngines(FakeCleanupEngine { _ in reply }))).process(id)
 
-        #expect(try await step(id) == (reason.map { Meeting.Step(.failed, reason: $0) } ?? Meeting.Step(.done)))
+        let step = try await step(id)
+        #expect(step.status == (reason == nil ? .done : .failed))
+        #expect(reason == nil || MeetingProcessing.Step.summary.problem(step.problem).message == reason)
         #expect(try await store.text(.summary, of: id).isEmpty == (reason != nil))
     }
 
@@ -184,7 +186,7 @@ struct SummaryServiceTests {
     // The clean-up model has answered a Bulgarian meeting in Russian.
     @Test(arguments: [
         (inBulgarian, Meeting.Step(.done)),
-        (inRussian, Meeting.Step(.failed, reason: "The summary came back in a language the meeting was not held in."))
+        (inRussian, Meeting.Step(.failed, problem: SummaryError.wrongLanguage.problem.code))
     ])
     func a_reply_in_a_language_the_meeting_was_not_held_in_is_asked_once_more_naming_the_language(
         second: String, outcome: Meeting.Step
@@ -244,7 +246,7 @@ struct SummaryServiceTests {
     @Test func a_title_that_fails_leaves_the_meeting_untitled_and_the_summary_done() async throws {
         let id = try await meeting(title: "")
 
-        await processing(service(FakeSummaryEngines(engine { throw CleanupEngineError.generationFailed(reason: "stopped") }))).process(id)
+        await processing(service(FakeSummaryEngines(engine { throw CleanupEngineError.generationFailed() }))).process(id)
 
         #expect(try await store.meeting(id).title.isEmpty)
         #expect(try await store.text(.summary, of: id) == Self.summary)
@@ -262,6 +264,20 @@ struct SummaryServiceTests {
         #expect(try await store.text(.summary, of: id).isEmpty)
     }
 
+    @Test func a_template_with_no_headings_fails_the_step_saying_what_to_fix() async throws {
+        let templates = folder.url.appending(path: "Templates")
+        try FileManager.default.createDirectory(at: templates, withIntermediateDirectories: true)
+        try Data("Standup\n\nWhat we did.\n".utf8).write(to: templates.appending(path: "standup.md"))
+        let id = try await meeting { $0.template = "standup" }
+
+        await processing(service(FakeSummaryEngines(FakeCleanupEngine { _ in Self.summary }))).process(id)
+
+        let failed = try await step(id)
+        #expect(failed == Meeting.Step(.failed, problem: "template.no-headings"))
+        #expect(MeetingProcessing.Step.summary.problem(failed.problem).message
+            == "The summary template has no headings. Start each with # in Settings, Summaries.")
+    }
+
     // 30 seconds, and one more per 100 words of transcript: 1,000 words here.
     @Test func a_summary_still_running_after_its_time_limit_fails_the_step() async throws {
         let id = try await meeting(lines: [("others", String(repeating: "We went over the plan. ", count: 200))])
@@ -274,7 +290,7 @@ struct SummaryServiceTests {
         clock.advance(by: .seconds(40))
         await run.value
 
-        #expect(try await step(id) == Meeting.Step(.failed, reason: "The summary took longer than its limit of 40 seconds."))
+        #expect(try await step(id) == Meeting.Step(.failed, problem: SummaryError.timedOut.problem.code))
         stuck.open()
     }
 
@@ -291,7 +307,7 @@ struct SummaryServiceTests {
         clock.advance(by: .seconds(30))
         await run.value
 
-        #expect(waiting == Meeting.Step(.waiting, reason: "Waiting for dictation to finish."))
+        #expect(waiting == Meeting.Step(.waiting, for: .dictation))
         #expect(engine.calls.count == 1)
         #expect(try await step(id) == Meeting.Step(.done))
     }

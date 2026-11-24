@@ -160,8 +160,23 @@ report "Read the reducesMotion environment value, or ReduceMotion where no view 
   "Sources/NarrariKit/Settings/ReduceMotion.swift" \
   < <(swift_grep 'accessibility(DisplayShould)?ReduceMotion' Sources App tests)
 
-report "Log through Log with a fixed name from Sources/NarrariKit/Support/Log.swift, never print or another logger." \
-  "Sources/NarrariKit/Support/Log.swift" \
+report "Show error.problem(or:) with the feature's fixed problem; system text never reaches the screen, a file or the log (DESIGN.md, Problems)." \
+  "" < <(swift_grep 'localizedDescription' Sources App tests scripts/dev)
+
+empty_catches() {
+  find Sources App tests scripts/dev -name '*.swift' 2>/dev/null | sort | xargs awk '
+    FNR == 1 { pending = 0 }
+    /catch[^{]*\{[[:space:]]*\}/ { print FILENAME ":" FNR ":"; pending = 0; next }
+    pending && /^[[:space:]]*\/\// { next }
+    pending && /^[[:space:]]*\}/ { print FILENAME ":" pending ":" }
+    { pending = 0 }
+    /catch[^{]*\{[[:space:]]*$/ { pending = FNR }' /dev/null
+}
+report "Handle the error: log it with Log.failure and show its problem, or let it throw; an empty catch hides a failure." \
+  "" < <(empty_catches)
+
+report "Log through Log with a fixed name from Sources/NarrariKit/Support/Log/Log.swift, never print or another logger." \
+  "Sources/NarrariKit/Support/Log/Log.swift" \
   < <(swift_grep '(^|[^[:alnum:]_.])(print|NSLog|os_log|Logger)\(' Sources App tests)
 
 report "Name controls with .iconLabel or a quiet line; Narrari never shows the system tooltip (DESIGN.md, Controls)." \

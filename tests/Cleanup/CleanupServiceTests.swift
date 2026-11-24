@@ -62,7 +62,7 @@ struct CleanupServiceTests {
     }
 
     @Test(arguments: zip(
-        [CleanupEngineError.generationFailed(reason: "connection refused"), .modelUnavailable(reason: "unloaded")],
+        [CleanupEngineError.generationFailed(), .modelUnavailable],
         [CleanupResult.Reason.engineFailed, .modelUnavailable]
     ))
     func engine_error_returns_the_raw_transcript_with_its_reason(error: CleanupEngineError, reason: CleanupResult.Reason) async {
@@ -137,7 +137,7 @@ struct CleanupServiceTests {
     }
 
     @Test(arguments: zip(
-        [ModelState.preparing(fraction: 0.3), .missing, .failed(reason: "corrupt")],
+        [ModelState.preparing(fraction: 0.3), .missing, .failed(CleanupEngineError.modelUnavailable.problem)],
         [CleanupResult.Reason.modelLoading, .modelUnavailable, .modelUnavailable]
     ))
     func engine_not_ready_skips_without_asking_it(state: ModelState, reason: CleanupResult.Reason) async {

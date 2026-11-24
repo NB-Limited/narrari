@@ -8,6 +8,7 @@ Native macOS menu bar app for dictation and meeting notes. Swift 6, SwiftUI, App
 - New dependencies need a licence compatible with GPL-3.0 and an exact version pin.
 - Local first: nothing leaves the Mac unless the user entered an outside service themselves.
 - Dictated text, meeting words, people's names and audio never go into logs. `Log` takes fixed names only.
+- An error Narrari throws gives a `Problem`; screens and files take its message or code, never system text (DESIGN.md, Problems).
 - All logic lives in `Sources/NarrariKit/`, one folder per concern. `App/` holds views and wiring only.
 - Every setting and its default lives in `Sources/NarrariKit/Settings/`.
 - Tests live in `tests/`, mirroring `Sources/NarrariKit/`. Mock only at system boundaries.

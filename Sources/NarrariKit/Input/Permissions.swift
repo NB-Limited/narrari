@@ -82,7 +82,13 @@ public final class Permissions {
         access: InputAccess = .system,
         microphoneStatus: @escaping @Sendable () -> AVAuthorizationStatus = { AVCaptureDevice.authorizationStatus(for: .audio) },
         calendarStatus: @escaping @Sendable () -> EKAuthorizationStatus = { EKEventStore.authorizationStatus(for: .event) },
-        askForCalendar: @escaping @Sendable () async -> Void = { _ = try? await EKEventStore().requestFullAccessToEvents() },
+        askForCalendar: @escaping @Sendable () async -> Void = {
+            do {
+                _ = try await EKEventStore().requestFullAccessToEvents()
+            } catch {
+                Log.failure("calendar-request", error: error)
+            }
+        },
         clock: any Clock<Duration> = ContinuousClock()
     ) {
         self.settings = settings

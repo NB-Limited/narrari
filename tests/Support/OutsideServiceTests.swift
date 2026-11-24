@@ -17,7 +17,7 @@ struct OutsideServiceTests {
     }
 
     @Test func plain_http_address_explains_what_to_use() {
-        #expect(ServiceAddress.problem(with: "http://api.example.com/v1") == ServiceAddressError.notHTTPS.message)
+        #expect(ServiceAddress.problem(with: "http://api.example.com/v1") == ServiceAddressError.notHTTPS.problem.message)
         #expect(ServiceAddress.problem(with: "https://api.example.com/v1") == nil)
     }
 
@@ -30,7 +30,7 @@ struct OutsideServiceTests {
             dictionary: DictionaryStore(root: folder.url), session: service.session, clock: TestClock()
         )
 
-        await #expect(throws: RemoteTranscriberError.serviceFailed(reason: "the speech service answered with status 302")) {
+        await #expect(throws: RemoteTranscriberError.serviceFailed(status: 302)) {
             try await remote.transcribe(samples: speech(seconds: 1))
         }
         #expect(elsewhere.requests.isEmpty)

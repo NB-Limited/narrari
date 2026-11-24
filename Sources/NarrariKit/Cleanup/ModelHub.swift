@@ -72,7 +72,7 @@ struct ModelHub: MLXLMCommon.Downloader {
 
     private func repo(_ id: String) throws -> Repo.ID {
         guard let repo = Repo.ID(rawValue: id) else {
-            throw CleanupEngineError.modelUnavailable(reason: "\(id) is not a Hugging Face model id")
+            throw CleanupEngineError.modelUnavailable
         }
         return repo
     }

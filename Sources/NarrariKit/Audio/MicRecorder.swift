@@ -3,11 +3,22 @@ import AVFoundation
 import CoreAudio
 import Synchronization
 
-public enum RecorderError: Error, Equatable {
+public enum RecorderError: ProblemError, Equatable {
     case microphoneDenied
     case microphoneAccessRequested
     case noInput
     case startFailed
+
+    public var problem: Problem {
+        switch self {
+        case .microphoneDenied: Problem("recorder.denied", "Microphone access is off. Allow it in System Settings.", canRetry: true)
+        case .microphoneAccessRequested: Problem("recorder.asked", "Allow microphone access, then try again.", canRetry: true)
+        case .noInput: Problem("recorder.no-input", Self.couldNotStart, canRetry: true)
+        case .startFailed: Problem("recorder.start-failed", Self.couldNotStart, canRetry: true)
+        }
+    }
+
+    private static let couldNotStart = "The microphone could not start. Try again, or choose another in Settings, Speech."
 }
 
 @MainActor

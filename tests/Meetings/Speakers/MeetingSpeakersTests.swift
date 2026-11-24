@@ -64,6 +64,15 @@ struct MeetingSpeakersTests {
         try await store.meeting(id).speakers.map(\.name)
     }
 
+    @Test func a_transcript_without_word_timings_fails_saying_to_transcribe_again() async throws {
+        let meeting = Meeting(title: "Weekly", startedAt: .now, app: "", source: .call, template: "general", state: .ready)
+        try await store.create(meeting, appName: "Zoom")
+
+        await #expect(throws: MeetingSpeakers.Failure.noWordTimings) { try await step.run(meeting.id, in: store) }
+        #expect(MeetingProcessing.Step.speakers.problem("speakers.no-word-timings").message
+            == "The transcript has no word timings. Transcribe the meeting again.")
+    }
+
     // The owner's voice is learned from a two-track meeting, as the first meeting of each test that needs it.
     private func learnOwner() async throws {
         splits.set(["mic.caf": SpeakerSplit(turns: [turn("S1", 0, 20)], prints: ["S1": voicePrint(0)])])

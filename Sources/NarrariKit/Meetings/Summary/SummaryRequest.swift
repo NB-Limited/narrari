@@ -1,13 +1,5 @@
 import Foundation
 
-struct SummaryFailure: LocalizedError, Equatable {
-    let errorDescription: String?
-
-    init(_ message: String) {
-        errorDescription = message
-    }
-}
-
 // The meeting goes in the user message as material, so spoken words can change the summary's wording but never its task.
 struct SummaryRequest: Sendable {
     let instruction: String
@@ -54,10 +46,10 @@ struct SummaryRequest: Sendable {
         return Double(languages[code, default: 0]) >= Double(languages.values.reduce(0, +)) * Self.languageShare
     }
 
-    func refusal(of reply: String) -> String? {
-        if reply.isEmpty { return "The model gave an empty summary." }
-        if !isInMeetingLanguage(reply) { return "The summary came back in a language the meeting was not held in." }
-        if isLong, reply.count < Self.shortestReply { return "The summary is too short for a meeting this long." }
+    func refusal(of reply: String) -> SummaryError? {
+        if reply.isEmpty { return .emptyReply }
+        if !isInMeetingLanguage(reply) { return .wrongLanguage }
+        if isLong, reply.count < Self.shortestReply { return .tooShort }
         return nil
     }
 

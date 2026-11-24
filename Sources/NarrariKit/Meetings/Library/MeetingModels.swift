@@ -174,7 +174,11 @@ public final class MeetingModels: MeetingModelSupply {
                 try Task.checkCancellation()
                 Log.event("meeting-model-downloaded")
             } catch is CancellationError {
-                try? store.delete(named: model.folder)
+                do {
+                    try store.delete(named: model.folder)
+                } catch {
+                    Log.failure("meeting-model-cancel-delete", error: error)
+                }
             } catch {
                 Log.failure("meeting-model-download", error: error)
                 self?.statuses[model] = .failed(Self.downloadFailed)

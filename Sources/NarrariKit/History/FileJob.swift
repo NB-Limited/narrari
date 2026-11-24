@@ -70,7 +70,7 @@ public final class FileJob {
         notice = nil
         let fileName = url.lastPathComponent
         guard Self.isSupported(url) else {
-            notice = .failed(fileName: fileName, message: AudioFileError.unreadable.message)
+            notice = .failed(fileName: fileName, message: AudioFileError.unreadable.problem.message)
             return
         }
         guard isModelReady() else {
@@ -96,7 +96,8 @@ public final class FileJob {
                 Log.event("file-job-cancelled")
             } catch {
                 Log.failure("file-job", error: error)
-                await finish(id, notice: .failed(fileName: fileName, message: Self.message(for: error)), saved: false)
+                let problem = error.problem(or: TranscriberError.transcriptionFailed.problem)
+                await finish(id, notice: .failed(fileName: fileName, message: problem.message), saved: false)
             }
         }
     }
@@ -129,14 +130,5 @@ public final class FileJob {
     private func report(_ fraction: Double, for id: UUID) {
         guard running?.id == id else { return }
         running?.fraction = fraction
-    }
-
-    private static func message(for error: any Error) -> String {
-        switch error {
-        case let error as AudioFileError: error.message
-        case RetranscriptionError.nothingHeard: "Nothing heard in this file."
-        case TranscriberError.modelUnavailable: "The speech model is not available. Download it in Settings, Speech."
-        default: "Transcription failed. Try the file again."
-        }
     }
 }

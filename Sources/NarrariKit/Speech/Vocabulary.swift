@@ -1,6 +1,14 @@
 import FluidAudio
 import Foundation
 
+public enum VocabularyError: ProblemError {
+    case notReady
+
+    public var problem: Problem {
+        Problem("vocabulary.not-ready", "Could not get ready for these words. Clean-up still sees them.", canRetry: true)
+    }
+}
+
 public actor Vocabulary {
     public static let modelName = CtcModels.defaultCacheDirectory(for: .ctc110m).lastPathComponent
 
@@ -80,7 +88,7 @@ public actor Vocabulary {
         } catch {
             guard self.words == words else { return }
             Log.failure("vocabulary-load", error: error)
-            onStateChange(.failed(reason: error.localizedDescription))
+            onStateChange(.failed(VocabularyError.notReady.problem))
         }
     }
 

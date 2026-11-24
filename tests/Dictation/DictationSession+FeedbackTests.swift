@@ -47,7 +47,7 @@ struct DictationSessionFeedbackTests {
         let rig = SessionRig()
         rig.recorder.startError = RecorderError.startFailed
         rig.hotkeys.send(.hotkeyDown, at: rig.clock.seconds)
-        #expect(rig.session.notice == .microphoneUnavailable)
+        #expect(rig.session.notice == .microphone(.startFailed))
 
         rig.recorder.startError = nil
         await rig.pressAndConfirm()

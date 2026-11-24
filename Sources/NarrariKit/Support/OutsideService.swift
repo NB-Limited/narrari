@@ -1,19 +1,17 @@
 import Foundation
 
-public enum ServiceAddressError: Error, Equatable {
+public enum ServiceAddressError: ProblemError, Equatable {
     case empty
     case malformed
     case notHTTPS
     case containsCredentials
-}
 
-extension ServiceAddressError {
-    public var message: String {
+    public var problem: Problem {
         switch self {
-        case .empty: "Enter the address of the service. It starts with https://."
-        case .malformed: "Enter a full address that starts with https://, such as https://host/v1."
-        case .notHTTPS: "Use an https address. Plain http is allowed only for this Mac (localhost)."
-        case .containsCredentials: "Take the name and password out of the address. A key goes in the Key field."
+        case .empty: Problem("address.empty", "Enter the address of the service. It starts with https://.")
+        case .malformed: Problem("address.malformed", "Enter a full address that starts with https://, such as https://host/v1.")
+        case .notHTTPS: Problem("address.not-https", "Use an https address. Plain http is allowed only for this Mac (localhost).")
+        case .containsCredentials: Problem("address.credentials", "Take the name and password out of the address. A key goes in the Key field.")
         }
     }
 }
@@ -51,7 +49,7 @@ public struct ServiceAddress: Sendable, Equatable {
             _ = try ServiceAddress(text)
             return nil
         } catch {
-            return error.message
+            return error.problem.message
         }
     }
 

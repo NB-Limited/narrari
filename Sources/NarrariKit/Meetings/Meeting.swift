@@ -94,14 +94,36 @@ public struct Meeting: Codable, Sendable, Equatable {
         }
 
         public var status: Status
-        public var reason: String?
+        public var waiting: MeetingStepWaiting?
+        // The Problem code a failed step stopped with; never its message, so a reworded message still reads back.
+        public var problem: String?
         // When a running step started, for the time it has taken so far.
         public var since: Date?
 
-        public init(_ status: Status, reason: String? = nil, since: Date? = nil) {
+        public init(_ status: Status, for waiting: MeetingStepWaiting? = nil, problem: String? = nil, since: Date? = nil) {
             self.status = status
-            self.reason = reason
+            self.waiting = waiting
+            self.problem = problem
             self.since = since
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case status, waiting, problem, since
+        }
+
+        private enum OldKeys: String, CodingKey {
+            case reason
+        }
+
+        // Older files kept a sentence as the reason: a waiting step reads it back as what it waits for, a failed one shows its step's failure.
+        public init(from decoder: any Decoder) throws {
+            let fields = try decoder.container(keyedBy: CodingKeys.self)
+            status = try fields.decode(Status.self, forKey: .status)
+            since = try fields.decodeIfPresent(Date.self, forKey: .since)
+            problem = try fields.decodeIfPresent(String.self, forKey: .problem)
+            let sentence = try decoder.container(keyedBy: OldKeys.self).decodeIfPresent(String.self, forKey: .reason)
+            waiting = try fields.decodeIfPresent(String.self, forKey: .waiting).flatMap(MeetingStepWaiting.init(rawValue:))
+                ?? sentence.flatMap(MeetingStepWaiting.init(sentence:))
         }
     }
 

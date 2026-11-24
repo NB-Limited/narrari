@@ -60,7 +60,7 @@ struct FileJobTests {
         job.offer([folder.url.appending(path: "interview.m4a")])
         await until { !job.isWorking }
 
-        #expect(job.notice == .failed(fileName: "interview.m4a", message: "The speech model is not available. Download it in Settings, Speech."))
+        #expect(job.notice == .failed(fileName: "interview.m4a", message: "No speech model yet. Download one in Settings, Speech."))
         #expect(library.results.isEmpty)
         #expect(try await store.entries().entries.isEmpty)
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: store.root.path)) ?? []).isEmpty)
@@ -71,7 +71,7 @@ struct FileJobTests {
 
         job.offer([folder.url.appending(path: "notes.txt")])
 
-        #expect(job.notice == .failed(fileName: "notes.txt", message: AudioFileError.unreadable.message))
+        #expect(job.notice == .failed(fileName: "notes.txt", message: AudioFileError.unreadable.problem.message))
         #expect(!job.isWorking)
         #expect(library.results.isEmpty)
     }

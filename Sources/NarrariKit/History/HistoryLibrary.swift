@@ -123,7 +123,7 @@ public final class HistoryLibrary {
             _ = try await retranscription.run(entry)
         } catch {
             Log.failure("history-retranscribe", error: error)
-            errors[entry.id] = Self.message(for: error)
+            errors[entry.id] = error.problem(or: TranscriberError.transcriptionFailed.problem).message
         }
         await refresh()
     }
@@ -147,7 +147,7 @@ public final class HistoryLibrary {
             isSaved = true
         } catch {
             Log.failure("cleanup-again-failed", error: error)
-            errors[entry.id] = Self.cleanupMessage(for: error)
+            errors[entry.id] = error.problem(or: RetranscriptionError.cleanupNotRun(.engineFailed).problem).message
             isSaved = false
         }
         await refresh()
@@ -168,24 +168,6 @@ public final class HistoryLibrary {
         let list = results
         if selection == nil || !list.contains(where: { $0.id == selection }) {
             selection = list.first?.id
-        }
-    }
-
-    private static func message(for error: any Error) -> String {
-        switch error {
-        case RetranscriptionError.audioMissing: "The audio of this dictation is gone, so it can't be transcribed again."
-        case RetranscriptionError.nothingHeard: "Nothing heard in the audio. The dictation is unchanged."
-        case HistoryError.entryGone: "This dictation was deleted, so the new text was not kept."
-        case TranscriberError.modelUnavailable: "The speech model is not available. The audio is kept; try again once it has loaded."
-        default: "Transcription failed. The audio is kept; try again."
-        }
-    }
-
-    private static func cleanupMessage(for error: any Error) -> String {
-        switch error {
-        case HistoryError.entryGone: message(for: error)
-        case RetranscriptionError.cleanupNotRun(let reason): Notice.cleanupReason(reason) + " The text is unchanged."
-        default: Notice.cleanupReason(.engineFailed) + " The text is unchanged."
         }
     }
 }

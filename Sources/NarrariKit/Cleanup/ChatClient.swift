@@ -66,16 +66,16 @@ public struct ChatClient: CleanupEngine {
             reply = try await OutsideService.send(request, with: session)
         } catch {
             Log.failure("chat-request", error: error)
-            throw CleanupEngineError.generationFailed(reason: "the chat service could not be reached")
+            throw CleanupEngineError.generationFailed()
         }
         guard (200..<300).contains(reply.status) else {
-            throw CleanupEngineError.generationFailed(reason: "the chat service answered with status \(reply.status)")
+            throw CleanupEngineError.generationFailed(status: reply.status)
         }
         guard
             let decoded = try? JSONDecoder().decode(ChatReply.self, from: reply.data),
             let content = decoded.choices.first?.message.content
         else {
-            throw CleanupEngineError.generationFailed(reason: "the chat reply has no message text")
+            throw CleanupEngineError.generationFailed()
         }
         return content
     }

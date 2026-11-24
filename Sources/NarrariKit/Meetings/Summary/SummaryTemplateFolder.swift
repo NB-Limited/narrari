@@ -6,13 +6,16 @@ public struct SummaryTemplateFolder: Sendable {
     public static let builtInIDs = ["general", "one-to-one", "client-call"]
 
     public static let bundled: [String: String] = Dictionary(uniqueKeysWithValues: builtInIDs.compactMap { id in
-        guard let url = Bundle.module.url(forResource: id, withExtension: "md", subdirectory: "SummaryTemplates"),
-              let text = try? String(contentsOf: url, encoding: .utf8)
-        else {
+        guard let url = Bundle.module.url(forResource: id, withExtension: "md", subdirectory: "SummaryTemplates") else {
             Log.failure("summary-template-missing")
             return nil
         }
-        return (id, text)
+        do {
+            return (id, try String(contentsOf: url, encoding: .utf8))
+        } catch {
+            Log.failure("summary-template-unreadable-bundled", error: error)
+            return nil
+        }
     })
 
     public let url: URL
@@ -56,7 +59,7 @@ public struct SummaryTemplateFolder: Sendable {
     public func template(_ id: String) throws -> SummaryTemplate {
         try refresh()
         let file = url.appending(path: id + ".md")
-        guard FileManager.default.fileExists(atPath: file.path) else { throw SummaryTemplateError("There is no template named \(id).") }
+        guard FileManager.default.fileExists(atPath: file.path) else { throw SummaryTemplateError.missing }
         return try read(file)
     }
 

@@ -82,14 +82,14 @@ struct DictationSessionTests {
         await rig.session.shutdown()
 
         #expect(rig.session.phase == .idle)
-        #expect(rig.session.notice == .microphoneUnavailable)
+        #expect(rig.session.notice == .microphone(.startFailed))
         #expect(try await rig.entries().isEmpty)
         #expect(rig.media.mutes == 0)
     }
 
     @Test(arguments: zip(
-        [TranscriberError.modelUnavailable(reason: "not downloaded"), .transcriptionFailed(reason: "decoder")],
-        [Notice.modelUnavailable, .transcriptionFailed]
+        [TranscriberError.notDownloaded, .transcriptionFailed],
+        [Notice.speech(.notDownloaded), .speech(.transcriptionFailed)]
     ))
     func failed_transcription_ends_idle_and_keeps_the_audio(error: TranscriberError, notice: Notice) async throws {
         let rig = SessionRig(transcriber: FakeTranscriber { _ in throw error })

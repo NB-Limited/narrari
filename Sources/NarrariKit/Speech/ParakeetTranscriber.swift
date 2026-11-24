@@ -78,7 +78,7 @@ public actor ParakeetTranscriber: Transcriber {
             throw error
         } catch {
             Log.failure("transcribe", error: error)
-            throw TranscriberError.transcriptionFailed(reason: error.localizedDescription)
+            throw TranscriberError.transcriptionFailed
         }
     }
 
@@ -141,9 +141,9 @@ public actor ParakeetTranscriber: Transcriber {
             } catch {
                 if Task.isCancelled { throw CancellationError() }
                 Log.failure("model-load", error: error)
-                let reason = error.localizedDescription
-                onStateChange(.failed(reason: reason))
-                throw TranscriberError.modelUnavailable(reason: reason)
+                let failure = error as? TranscriberError ?? .modelUnavailable
+                onStateChange(.failed(failure.problem))
+                throw failure
             }
         }
         loading = task

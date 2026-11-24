@@ -2,7 +2,6 @@ import Foundation
 
 // Dictation has the model first: a dictation stops a running summary, which starts again after 30 seconds without one.
 public final class SummaryService: MeetingStep {
-    public static let waitingReason = "Waiting for dictation to finish."
     static let quietBeforeStart: Duration = .seconds(30)
 
     private let templates: SummaryTemplateFolder
@@ -64,7 +63,7 @@ public final class SummaryService: MeetingStep {
                     try await SummaryTitle.make(with: engine, from: summary, in: language)
                 }
             }
-            guard let made else { throw SummaryFailure("The model gave no title.") }
+            guard let made else { throw SummaryError.noTitle }
             try await store.update(id) { meeting in
                 guard Self.takesTitle(meeting) else { return }
                 meeting.title = made
@@ -97,7 +96,7 @@ public final class SummaryService: MeetingStep {
         }
         if let refusal = request.refusal(of: text) {
             Log.event("meeting-summary-refused")
-            throw SummaryFailure(refusal)
+            throw refusal
         }
         return text
     }
@@ -111,13 +110,13 @@ public final class SummaryService: MeetingStep {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         } catch is TimeLimitExceeded {
             Log.event("meeting-summary-timed-out")
-            throw SummaryFailure("The summary took longer than its limit of \(request.timeLimit.components.seconds) seconds.")
+            throw SummaryError.timedOut
         } catch CleanupEngineError.replyTooLong {
-            throw SummaryFailure("The summary ran past its length limit.")
+            throw SummaryError.tooLong
         } catch CleanupEngineError.modelUnavailable {
-            throw SummaryFailure("The clean-up model could not be loaded.")
-        } catch CleanupEngineError.generationFailed(let reason) {
-            throw SummaryFailure("The model failed: \(reason).")
+            throw SummaryError.modelUnavailable
+        } catch CleanupEngineError.generationFailed {
+            throw SummaryError.modelFailed
         }
     }
 
@@ -145,7 +144,7 @@ public final class SummaryService: MeetingStep {
     }
 
     private func waitForQuiet(_ id: UUID, in store: MeetingStore) async throws {
-        try await mark(id, in: store, Meeting.Step(.waiting, reason: Self.waitingReason))
+        try await mark(id, in: store, Meeting.Step(.waiting, for: .dictation))
         var isQuiet = false
         while !isQuiet {
             for await busy in dictation.updates() where !busy { break }

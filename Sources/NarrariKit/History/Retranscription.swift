@@ -1,9 +1,18 @@
 import Foundation
 
-public enum RetranscriptionError: Error, Equatable {
+public enum RetranscriptionError: ProblemError, Equatable {
     case audioMissing
     case nothingHeard
     case cleanupNotRun(CleanupResult.Reason)
+
+    public var problem: Problem {
+        switch self {
+        case .audioMissing: Problem("retranscribe.audio-missing", "The audio of this dictation is gone, so it can't be transcribed again.")
+        case .nothingHeard: Problem("retranscribe.nothing-heard", "Nothing heard in the audio, so nothing was saved.")
+        case .cleanupNotRun(let reason):
+            Problem("retranscribe.cleanup-not-run", Notice.cleanupReason(reason) + " The text is unchanged.", canRetry: true)
+        }
+    }
 }
 
 public struct Retranscription: Sendable {
@@ -81,7 +90,11 @@ public struct Retranscription: Sendable {
             Log.event("history-file-saved")
             return saved
         } catch {
-            try? await history.removeAudio(for: entry.id)
+            do {
+                try await history.removeAudio(for: entry.id)
+            } catch {
+                Log.failure("history-file-discard", error: error)
+            }
             throw error
         }
     }
