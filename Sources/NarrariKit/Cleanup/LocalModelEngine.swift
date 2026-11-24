@@ -3,7 +3,7 @@ import MLX
 import MLXLLM
 import MLXLMCommon
 
-public actor LocalModelEngine: CleanupEngine {
+public actor LocalModelEngine: BatchCleanupEngine {
     public nonisolated let name: String
     public nonisolated let runsInApp = true
     public private(set) var state = ModelState.missing
@@ -83,6 +83,24 @@ public actor LocalModelEngine: CleanupEngine {
         return reply.text
     }
 
+    // Nil for a piece cut off at its length or otherwise not finished in the batch; the caller cleans it alone.
+    public func rewrite(together transcripts: [String], instruction: String, growth: ReplyGrowth) async throws -> [String?] {
+        let loaded = try await loadedModel()
+        guard growth.repeatPenalty == nil else { throw CleanupEngineError.generationFailed() }
+        do {
+            let replies = try await generate(on: loaded, instruction: instruction, transcripts: transcripts, growth: growth)
+            Log.count("cleanup-batch-rows", transcripts.count)
+            return replies
+        } catch let error as CancellationError {
+            throw error
+        } catch let error as CleanupEngineError {
+            throw error
+        } catch {
+            Log.failure("cleanup-batch-generate", error: error)
+            throw CleanupEngineError.generationFailed()
+        }
+    }
+
     private func warm(_ loaded: Loaded) async {
         do {
             _ = try await generate(on: loaded, instruction: "Repeat the text.", transcript: "Ready.", growth: nil)
@@ -98,14 +116,7 @@ public actor LocalModelEngine: CleanupEngine {
         growth: ReplyGrowth?
     ) async throws -> (text: String, isCutOff: Bool) {
         let container = loaded.container
-        let reasoning = await container.configuration.reasoningConfig
-        let thinkingOff: [String: any Sendable]?
-        do {
-            thinkingOff = try reasoning?.promptStrategy.additionalContext(forThinkingEnabled: false)
-        } catch {
-            throw CleanupEngineError.generationFailed()
-        }
-
+        let (reasoning, thinkingOff) = try await Self.reasoning(of: container)
         let tokenizer = await container.tokenizer
         let cap = growth?.tokenLimit(for: tokenizer.encode(text: transcript, addSpecialTokens: false).count) ?? 1
         let parameters = GenerateParameters(
@@ -113,21 +124,11 @@ public actor LocalModelEngine: CleanupEngine {
         )
         await decoding?.value
         let (stream, decode) = try await container.perform { [loaded] context in
-            func prompt(_ text: String) async throws -> LMInput {
-                try await context.processor.prepare(
-                    input: UserInput(chat: [.system(instruction), .user(text)], additionalContext: thinkingOff)
-                )
-            }
-            let input = try await prompt(transcript)
+            let input = try await Self.prompt(transcript, instruction: instruction, thinkingOff: thinkingOff, context: context)
             let tokens = input.text.tokens.asArray(Int.self)
-            let kept = try await loaded.prefixes.state(for: tokens) {
-                // Two prompts that differ only in the dictated text share exactly the instruction part.
-                let one = try await prompt("alpha").text.tokens.asArray(Int.self)
-                let other = try await prompt("omega").text.tokens.asArray(Int.self)
-                return zip(one, other).prefix { $0 == $1 }.map(\.0)
-            } build: { instructionTokens in
-                try InstructionState(reading: instructionTokens, with: context, parameters: parameters)
-            }
+            let kept = try await Self.kept(
+                for: tokens, on: loaded, instruction: instruction, thinkingOff: thinkingOff, context: context, parameters: parameters
+            )
             let iterator = if let kept {
                 try TokenIterator(
                     input: LMInput(tokens: MLXArray(Array(tokens[kept.prefixLength...]))), model: context.model,
@@ -143,6 +144,72 @@ public actor LocalModelEngine: CleanupEngine {
         }
         decoding = decode
         return try await reply(from: stream, reasoning: reasoning, logsSpeed: growth != nil)
+    }
+
+    // Runs as the engine's decoding, so an unload stops it and waits for it as it does a single reply.
+    private func generate(on loaded: Loaded, instruction: String, transcripts: [String], growth: ReplyGrowth) async throws -> [String?] {
+        let container = loaded.container
+        let (reasoning, thinkingOff) = try await Self.reasoning(of: container)
+        let tokenizer = await container.tokenizer
+        let caps = transcripts.map { growth.tokenLimit(for: tokenizer.encode(text: $0, addSpecialTokens: false).count) }
+        let parameters = GenerateParameters(temperature: 0)
+        await decoding?.value
+        let work = Task { [loaded] in
+            try await container.perform { context -> [String?] in
+                var prompts: [[Int]] = []
+                for transcript in transcripts {
+                    let input = try await Self.prompt(transcript, instruction: instruction, thinkingOff: thinkingOff, context: context)
+                    prompts.append(input.text.tokens.asArray(Int.self))
+                }
+                guard let first = prompts.first,
+                      let kept = try await Self.kept(
+                        for: first, on: loaded, instruction: instruction, thinkingOff: thinkingOff, context: context, parameters: parameters
+                      )
+                else { throw CleanupEngineError.generationFailed() }
+                let replies = try BatchDecoder(context: context).run(
+                    prompts, caps: caps, from: kept.state, prefixLength: kept.prefixLength, parameters: parameters
+                )
+                return replies.map { reply in
+                    guard !reply.isCutOff else { return nil }
+                    let text = context.tokenizer.decode(tokenIds: reply.tokens)
+                    if let reasoning, text.contains(reasoning.startDelimiter) || text.contains(reasoning.endDelimiter) { return nil }
+                    return text
+                }
+            }
+        }
+        decoding = Task {
+            await withTaskCancellationHandler { _ = await work.result } onCancel: { work.cancel() }
+        }
+        return try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+    }
+
+    private static func reasoning(of container: ModelContainer) async throws -> (ReasoningConfig?, [String: any Sendable]?) {
+        let reasoning = await container.configuration.reasoningConfig
+        do {
+            return (reasoning, try reasoning?.promptStrategy.additionalContext(forThinkingEnabled: false))
+        } catch {
+            throw CleanupEngineError.generationFailed()
+        }
+    }
+
+    private static func prompt(
+        _ text: String, instruction: String, thinkingOff: [String: any Sendable]?, context: ModelContext
+    ) async throws -> LMInput {
+        try await context.processor.prepare(input: UserInput(chat: [.system(instruction), .user(text)], additionalContext: thinkingOff))
+    }
+
+    // Two prompts that differ only in the dictated text share exactly the instruction part.
+    private static func kept(
+        for tokens: [Int], on loaded: Loaded, instruction: String, thinkingOff: [String: any Sendable]?,
+        context: ModelContext, parameters: GenerateParameters
+    ) async throws -> (prefixLength: Int, state: InstructionState)? {
+        try await loaded.prefixes.state(for: tokens) {
+            let one = try await prompt("alpha", instruction: instruction, thinkingOff: thinkingOff, context: context).text.tokens.asArray(Int.self)
+            let other = try await prompt("omega", instruction: instruction, thinkingOff: thinkingOff, context: context).text.tokens.asArray(Int.self)
+            return zip(one, other).prefix { $0 == $1 }.map(\.0)
+        } build: { instructionTokens in
+            try InstructionState(reading: instructionTokens, with: context, parameters: parameters)
+        }
     }
 
     private func reply(
@@ -228,7 +295,7 @@ private struct Loaded: @unchecked Sendable {
 }
 
 // What the model holds after reading an instruction; each dictation continues from its own copy.
-private struct InstructionState {
+struct InstructionState {
     let cache: [any KVCache]
     let modelState: LMOutput.State?
 

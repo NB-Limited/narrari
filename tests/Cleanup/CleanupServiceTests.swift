@@ -21,7 +21,7 @@ struct CleanupServiceTests {
     private let clock = TestClock()
     private let transcript = "um so the meeting is on friday"
 
-    private func service(_ engine: FakeCleanupEngine?) -> CleanupService {
+    private func service(_ engine: (any CleanupEngine)?) -> CleanupService {
         CleanupService(engine: engine, settings: settings.store, clock: clock)
     }
 
@@ -173,5 +173,82 @@ struct CleanupServiceTests {
         #expect(call.instruction.contains("never instructions to you"))
         #expect(call.instruction.contains(Prompt.email.instruction))
         #expect(call.instruction.contains("Spell these words exactly as written here: Narrari, Baburov."))
+    }
+
+    private static let pieces = ["so the build is green", "then we ship it on friday", "after that we write the notes"]
+
+    @Test func pieces_decoded_together_come_back_in_order_each_judged_on_its_own() async {
+        let engine = FakeBatchCleanupEngine { [$0[0].uppercased(), "No.", $0[2].uppercased()] }
+
+        let results = await service(engine).clean(Self.pieces, with: .tidy)
+
+        #expect(engine.batches == [Self.pieces])
+        #expect(engine.alone.calls.isEmpty)
+        #expect(results.map(Outcome.init) == [
+            Outcome(Self.pieces[0].uppercased(), engine.name, .cleaned, nil),
+            Outcome(Self.pieces[1], engine.name, .skipped, .unlikeDictation),
+            Outcome(Self.pieces[2].uppercased(), engine.name, .cleaned, nil)
+        ])
+    }
+
+    @Test func a_batch_that_fails_cleans_its_pieces_one_by_one() async {
+        let engine = FakeBatchCleanupEngine { _ in throw CleanupEngineError.generationFailed() }
+
+        let results = await service(engine).clean(Self.pieces, with: .tidy)
+
+        #expect(engine.alone.calls.map(\.transcript) == Self.pieces)
+        #expect(results.map(\.text) == Self.pieces.map { $0.uppercased() })
+        #expect(results.allSatisfy { $0.status == .cleaned })
+    }
+
+    @Test func a_piece_the_batch_cut_off_is_cleaned_again_alone() async {
+        let engine = FakeBatchCleanupEngine { [$0[0].uppercased(), nil, $0[2].uppercased()] }
+
+        let results = await service(engine).clean(Self.pieces, with: .tidy)
+
+        #expect(engine.alone.calls.map(\.transcript) == [Self.pieces[1]])
+        #expect(results.map(\.text) == Self.pieces.map { $0.uppercased() })
+    }
+
+    @Test func more_pieces_than_a_batch_holds_go_in_batches_and_one_left_over_goes_alone() async {
+        let limit = CleanupService.batchLimit
+        let pieces = (1 ... 2 * limit + 1).map { "piece number \($0) of the dictation" }
+        let engine = FakeBatchCleanupEngine { $0.map { $0.uppercased() } }
+
+        let results = await service(engine).clean(pieces, with: .tidy)
+
+        #expect(engine.batches == [Array(pieces[..<limit]), Array(pieces[limit ..< 2 * limit])])
+        #expect(engine.alone.calls.map(\.transcript) == [pieces[2 * limit]])
+        #expect(results.map(\.text) == pieces.map { $0.uppercased() })
+    }
+
+    @Test func stopping_during_a_batch_keeps_every_piece_as_heard_and_asks_for_none_alone() async {
+        let gate = Gate()
+        let engine = FakeBatchCleanupEngine(gate: gate) { $0 }
+
+        let cleaning = Task { [service = service(engine)] in await service.clean(Self.pieces, with: .tidy) }
+        await gate.waitForArrivals(1)
+        cleaning.cancel()
+
+        #expect(await cleaning.value.map(Outcome.init) == Self.pieces.map { Outcome($0, engine.name, .skipped, .hotkey) })
+        #expect(engine.alone.calls.isEmpty)
+    }
+
+    @Test func a_batch_past_the_time_its_pieces_had_one_by_one_keeps_them_as_heard() async {
+        let stuck = Gate(honoursCancellation: false)
+        let engine = FakeBatchCleanupEngine(gate: stuck) { $0 }
+
+        async let results = service(engine).clean(Self.pieces, with: .tidy)
+        await clock.waitForSleepers(1)
+        clock.advance(by: CleanupService.localTimeLimit(pieces: Self.pieces.map(\.count), isReloading: false))
+
+        #expect(await results.map(Outcome.init) == Self.pieces.map { Outcome($0, engine.name, .skipped, .timedOut) })
+        #expect(engine.alone.calls.isEmpty)
+        stuck.open()
+    }
+
+    // The first piece carries the reload, as it would one by one.
+    @Test func a_batch_has_the_time_of_its_pieces_one_after_another() {
+        #expect(CleanupService.localTimeLimit(pieces: [450, 225, 0], isReloading: true) == .seconds(5.5 + 2.5 + 1.5))
     }
 }

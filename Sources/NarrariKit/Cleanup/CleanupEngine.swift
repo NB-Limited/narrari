@@ -46,6 +46,11 @@ public protocol CleanupEngine: Sendable {
     func rewrite(_ transcript: String, instruction: String, growth: ReplyGrowth) async throws -> String
 }
 
+// An in-app engine that decodes a dictation's pieces together. A nil reply is a piece it could not finish there.
+public protocol BatchCleanupEngine: CleanupEngine {
+    func rewrite(together transcripts: [String], instruction: String, growth: ReplyGrowth) async throws -> [String?]
+}
+
 public enum CleanupEngineKind: String, CaseIterable, Sendable {
     case local
     case chat
