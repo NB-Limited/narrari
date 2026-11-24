@@ -163,6 +163,9 @@ report "Read the reducesMotion environment value, or ReduceMotion where no view 
 report "Show error.problem(or:) with the feature's fixed problem; system text never reaches the screen, a file or the log (DESIGN.md, Problems)." \
   "" < <(swift_grep 'localizedDescription' Sources App tests scripts/dev)
 
+report "Show work through WorkState and its label: \"Transcribing\", \"Writing the summary\" (DESIGN.md, States)." \
+  "" < <(swift_grep '"(Writing the transcript|Transcribing the file|Transcribing again|Writing up the meeting|Processing)' Sources App)
+
 empty_catches() {
   find Sources App tests scripts/dev -name '*.swift' 2>/dev/null | sort | xargs awk '
     FNR == 1 { pending = 0 }

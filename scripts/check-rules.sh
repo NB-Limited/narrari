@@ -44,6 +44,8 @@ expect Sources/NarrariKit/Words/Keep.swift "for its owner alone" 'try data.write
 expect App/Menu/Motion.swift "reducesMotion environment value" 'let isOn = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion'
 expect Sources/NarrariKit/Words/Say.swift "never print or another logger" 'print("words")'
 expect App/Menu/Words.swift "system text never reaches" 'Text(error.localizedDescription)'
+expect App/Menu/Busy.swift "through WorkState" 'Text("Writing up the meeting")'
+expect Sources/NarrariKit/Words/Busy.swift "through WorkState" 'let label = "Processing"'
 expect Sources/NarrariKit/Words/Load.swift "an empty catch" 'do {\n    try load()\n} catch {}'
 expect Sources/NarrariKit/Words/Save.swift "an empty catch" 'do {\n    try save()\n} catch let error as SaveError {\n    // fine\n}'
 expect App/Menu/Tip.swift "system tooltip" 'Text("Words").help("Your words")'
