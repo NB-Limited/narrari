@@ -83,6 +83,13 @@ public actor LocalModelEngine: CleanupEngine {
         return reply.text
     }
 
+    // For scripts/dev experiments: the loaded model, once no generation is running, as a clean-up gets it.
+    public func withLoadedModel<R: Sendable>(_ body: @Sendable (ModelContext) async throws -> sending R) async throws -> R {
+        let loaded = try await loadedModel()
+        await decoding?.value
+        return try await loaded.container.perform(body)
+    }
+
     private func warm(_ loaded: Loaded) async {
         do {
             _ = try await generate(on: loaded, instruction: "Repeat the text.", transcript: "Ready.", growth: nil)

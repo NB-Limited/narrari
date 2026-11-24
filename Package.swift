@@ -32,7 +32,11 @@ let package = Package(
         ),
         .executableTarget(
             name: "narrari-dev",
-            dependencies: ["NarrariKit"],
+            dependencies: [
+                "NarrariKit",
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+            ],
             path: "scripts/dev",
             swiftSettings: strict
         ),

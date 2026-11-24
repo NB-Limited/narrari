@@ -6,11 +6,15 @@ import NarrariKit
 
 actor ReplyLog {
     private(set) var heard: [String] = []
+    private(set) var instructions: [String] = []
+    private(set) var growths: [ReplyGrowth] = []
     private(set) var replies: [String?] = []
     private(set) var seconds: [Double] = []
 
-    func start(_ transcript: String) -> Int {
+    func start(_ transcript: String, instruction: String, growth: ReplyGrowth) -> Int {
         heard.append(transcript)
+        instructions.append(instruction)
+        growths.append(growth)
         replies.append(nil)
         seconds.append(.nan)
         return replies.count - 1
@@ -32,7 +36,7 @@ struct LoggingEngine: CleanupEngine {
     func load() async throws { try await engine.load() }
     func unload() async { await engine.unload() }
     func rewrite(_ transcript: String, instruction: String, growth: ReplyGrowth) async throws -> String {
-        let call = await log.start(transcript)
+        let call = await log.start(transcript, instruction: instruction, growth: growth)
         let start = ContinuousClock.now
         do {
             let reply = try await engine.rewrite(transcript, instruction: instruction, growth: growth)
@@ -116,10 +120,8 @@ func loadAverage() -> Double {
 func dictationReplay(_ experiment: String, history: String, out: String, model: String?) async throws {
     if experiment == "text" {
         try await dictationReplayText(history: history, out: out, model: model)
-    } else if experiment == "ahead" {
-        try await dictationReplayAhead(history: history, out: out)
     } else {
-        try await dictationReplayPieces(history: history, out: out)
+        try await dictationReplayBatch(history: history, out: out, model: model)
     }
 }
 
@@ -248,9 +250,18 @@ func dictationReplayText(history: String, out: String, model: String?) async thr
 }
 
 func printTextSummary(rows: [ReplayRow], chunks: [ChunkRow]) {
+    printVariants(rows, ["whole", "pipeline"])
+    let single = rows.filter { $0.variant == "pipeline" && $0.sameAsWhole != nil }
+    print("\none-chunk dictations cleaned again: \(single.count), text differs from whole: \(single.filter { $0.sameAsWhole == false }.count)")
+    let reasons = Dictionary(grouping: rows.flatMap { row in row.reasons.map { "\(row.variant) \($0)" } }, by: { $0 }).mapValues(\.count)
+    print("reasons: " + reasons.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))
+    printChunkGuard(chunks, variant: "pipeline")
+}
+
+func printVariants(_ rows: [ReplayRow], _ variants: [String]) {
     let buckets: [(String, ClosedRange<Int>)] = [("1-25", 1...25), ("26-75", 26...75), ("76-150", 76...150), ("151+", 151...Int.max)]
     print("\nvariant | words | n | p50 s | p90 s | total s | kept<0.9 | kept<0.8 | lost>10% | skipped whole | chunks skipped | fillers in | left")
-    for variant in ["whole", "pipeline"] {
+    for variant in variants {
         for (label, range) in buckets + [("all", 1...Int.max)] {
             let set = rows.filter { $0.variant == variant && range.contains($0.measure.heardWords) }
             let times = set.map(\.seconds)
@@ -263,11 +274,6 @@ func printTextSummary(rows: [ReplayRow], chunks: [ChunkRow]) {
             ))
         }
     }
-    let single = rows.filter { $0.variant == "pipeline" && $0.sameAsWhole != nil }
-    print("\none-chunk dictations cleaned again: \(single.count), text differs from whole: \(single.filter { $0.sameAsWhole == false }.count)")
-    let reasons = Dictionary(grouping: rows.flatMap { row in row.reasons.map { "\(row.variant) \($0)" } }, by: { $0 }).mapValues(\.count)
-    print("reasons: " + reasons.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))
-    printChunkGuard(chunks, variant: "pipeline")
 }
 
 // Lossy: the reply lost more than a tenth of the chunk's words beyond fillers. Each threshold is on contentKept alone.
