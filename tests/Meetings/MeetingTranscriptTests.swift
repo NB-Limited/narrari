@@ -78,6 +78,6 @@ struct MeetingTranscriptTests {
         let id = try await newMeeting(with: [.microphone])
         let step = try step { _, _ in throw TranscriberError.notDownloaded }
 
-        await #expect(throws: MeetingStepWaiting.speechModel) { try await step.run(id, in: store) }
+        await #expect(throws: WaitReason.speechModel) { try await step.run(id, in: store) }
     }
 }

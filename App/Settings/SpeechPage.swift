@@ -128,8 +128,8 @@ private struct MeetingModelRow: View {
                 case .downloading(let fraction):
                     ProgressBar(fraction: fraction, label: "Downloading \(name)", track: .meterTrack)
                         .padding(.top, SettingsGrid.progressTop)
-                case .failed(let reason):
-                    FormError(message: reason).padding(.top, ControlMetrics.errorGap)
+                case .failed(let problem):
+                    FormError(message: problem.message).padding(.top, ControlMetrics.errorGap)
                 default:
                     EmptyView()
                 }

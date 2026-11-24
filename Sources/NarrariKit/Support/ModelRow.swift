@@ -78,9 +78,8 @@ public struct ModelRow: Sendable, Equatable {
         return nil
     }
 
-    // "Downloading, 46%" under the row while it runs.
     public var progressLine: String? {
-        progress.map { "Downloading, \(MetricText.percent($0))" }
+        progress.map { WorkState.working(.downloading, progress: $0).label }
     }
 
     public var failure: String? {

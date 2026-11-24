@@ -11,7 +11,7 @@ public final class MeetingModels: MeetingModelSupply {
         case notDownloaded
         case downloading(Double)
         case onThisMac(bytes: Int64)
-        case failed(String)
+        case failed(Problem)
     }
 
     public private(set) var statuses: [AudioModel: Status] = [:]
@@ -23,7 +23,7 @@ public final class MeetingModels: MeetingModelSupply {
     @ObservationIgnored private var downloads: [AudioModel: Task<Void, Never>] = [:]
     @ObservationIgnored private var sharedDownloads: [NeededModel: Task<Bool, Never>] = [:]
 
-    static let downloadFailed = "The download failed. Check the connection and try again."
+    static let downloadFailed = Problem("model.download-failed", "The download failed. Check the connection and try again.", canRetry: true)
 
     // Without the speech or clean-up model, a step waiting for it reads as needing it and waits until retried.
     public init(store: ModelStore, fetch: @escaping Fetch, speech: SharedModel? = nil, cleanup: SharedModel? = nil) {
@@ -53,7 +53,7 @@ public final class MeetingModels: MeetingModelSupply {
         let purpose = Self.entry(model)?.purpose.map { "\($0), " } ?? ""
         return switch status(of: model) {
         case .onThisMac(let bytes): "\(purpose)\(MetricText.bytes(bytes)), on this Mac"
-        case .downloading(let fraction): "Downloading, \(MetricText.percent(fraction))"
+        case .downloading(let fraction): WorkState.working(.downloading, progress: fraction).label
         case .notDownloaded, .failed: "\(purpose)\(MetricText.bytes(Self.size(of: model)))"
         }
     }

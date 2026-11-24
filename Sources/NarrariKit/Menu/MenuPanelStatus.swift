@@ -6,19 +6,19 @@ public enum MenuPanelStatus: Equatable, Sendable {
     case ready(hotkey: String)
     case recording(elapsed: String, hotkey: String)
     case busy(title: String)
-    case loading(fraction: Double)
+    case loading(WorkState)
     case problem(title: String, fix: MenuPanelAction)
     // The meeting's time is shown while it records or is paused.
     case meeting(title: String, elapsed: String?)
 
     public init(_ status: AppStatus, meeting: MeetingSession.State, hotkey: String, elapsed: TimeInterval, meetingElapsed: TimeInterval) {
         switch (status, meeting) {
-        case (.ready, .recording), (.modelLoading, .recording):
+        case (.ready, .recording), (.model, .recording):
             self = .meeting(title: "Recording meeting", elapsed: MeetingSurfaces.elapsedText(seconds: meetingElapsed))
-        case (.ready, .paused), (.modelLoading, .paused):
+        case (.ready, .paused), (.model, .paused):
             self = .meeting(title: "Meeting paused", elapsed: MeetingSurfaces.elapsedText(seconds: meetingElapsed))
-        case (.ready, .processing), (.modelLoading, .processing):
-            self = .meeting(title: "Writing up the meeting", elapsed: nil)
+        case (.ready, .processing), (.model, .processing):
+            self = .meeting(title: WorkState.working(.writingSummary).label, elapsed: nil)
         default:
             self.init(status, hotkey: hotkey, elapsed: elapsed)
         }
@@ -28,8 +28,8 @@ public enum MenuPanelStatus: Equatable, Sendable {
         switch status {
         case .ready: self = .ready(hotkey: hotkey)
         case .recording: self = .recording(elapsed: EntryFormat.position(elapsed), hotkey: hotkey)
-        case .transcribing, .cleaning: self = .busy(title: status.title)
-        case .modelLoading(let fraction): self = .loading(fraction: fraction)
+        case .dictation: self = .busy(title: status.title)
+        case .model(let work): self = .loading(work)
         case .modelFailed: self = .problem(title: status.title, fix: .openSpeechSettings)
         case .accessibilityMissing: self = .problem(title: status.title, fix: .allowAccessibility)
         case .microphoneMissing: self = .problem(title: status.title, fix: .allowMicrophone)
@@ -41,13 +41,13 @@ public enum MenuPanelStatus: Equatable, Sendable {
         case .ready: "Ready"
         case .recording: "Recording"
         case .busy(let title), .problem(let title, _), .meeting(let title, _): title
-        case .loading: "Speech model loading"
+        case .loading(let work): work.activity?.label ?? work.label
         }
     }
 
     // A fresh download reports nothing for a moment; no figure reads better than "0%".
     public var percent: String? {
-        guard case .loading(let fraction) = self, fraction > 0 else { return nil }
+        guard case .loading(let work) = self, let fraction = work.progress, fraction > 0 else { return nil }
         return MetricText.percent(min(fraction, 1))
     }
 
@@ -71,8 +71,8 @@ public struct DictationRow: Equatable, Sendable {
     init(session: DictationSession, status: AppStatus) {
         switch status {
         case _ where session.phase == .recording: self.init(title: "Stop dictation")
-        case _ where session.isWaitingForModel: self.init(title: "Stop waiting")
-        case .transcribing, .cleaning, .accessibilityMissing, .microphoneMissing:
+        case _ where session.work == .waiting(.speechModel): self.init(title: "Stop waiting")
+        case .dictation, .accessibilityMissing, .microphoneMissing:
             self.init(title: "Start dictation", reason: status.title)
         default: self.init(title: "Start dictation")
         }

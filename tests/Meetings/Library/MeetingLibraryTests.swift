@@ -63,16 +63,16 @@ struct MeetingLibraryTests {
         #expect(listed.first == ["Microsoft Teams", "Hub walkthrough", "Weekly product sync"])
     }
 
-    @Test func a_meeting_waiting_for_a_model_reads_downloading_while_it_downloads() async throws {
+    @Test func a_meeting_waiting_for_a_model_says_so_then_reads_downloading_while_it_downloads() async throws {
         var meeting = try await saved("Weekly", in: "Zoom", hour: 0)
         meeting.steps.speakers = Meeting.Step(.waiting, for: .speakerModel)
         let before = library.state(of: meeting)
 
         models.begin([AudioModel.speakerSplit])
-        await until { library.state(of: meeting) == .working("Downloading") }
+        await until { library.state(of: meeting) == .work(.working(.downloading)) }
         fetch.gate.open()
 
-        #expect(before == .processing)
+        #expect(before == .work(.waiting(.speakerModel)) && WorkState.waiting(.speakerModel).label == "Waits for the speaker model")
     }
 
     @Test func a_pinned_meeting_leads_its_folder_and_a_meeting_is_renamed_to_untitled_moved_and_deleted() async throws {
@@ -152,7 +152,7 @@ struct MeetingLibraryTests {
         let meeting = Meeting(title: "Kickoff", startedAt: morning, app: "", source: .import, template: "general", state: .importing)
         try await store.create(meeting, appName: "")
 
-        #expect(library.state(of: meeting) == .importing)
+        #expect(library.state(of: meeting) == .work(.working(.importing)))
     }
 }
 

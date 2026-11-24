@@ -3,13 +3,6 @@ import Foundation
 // The work after a meeting as the page shows it: a row a step, and what each tab says while it has nothing to show.
 extension MeetingPage {
     public struct StepRow: Identifiable, Sendable, Equatable {
-        public enum Look: Sendable, Equatable {
-            case done
-            case working
-            case waiting
-            case failed
-        }
-
         public enum Action: Sendable, Equatable {
             case retry
             // Downloads what the step waits for, then carries on.
@@ -18,28 +11,21 @@ extension MeetingPage {
 
         public let id: MeetingProcessing.Step
         public let name: String
-        public let look: Look
-        public let since: Date?
-        public let progress: Double?
+        public let work: WorkState
         public let action: Action?
-        let status: String
+        // Read in place of the work's line: "Not needed", or what the model it waits for takes to download.
+        public let note: String?
 
-        init(
-            _ id: MeetingProcessing.Step, look: Look, status: String, since: Date? = nil, progress: Double? = nil, action: Action? = nil
-        ) {
+        init(_ id: MeetingProcessing.Step, _ work: WorkState, action: Action? = nil, note: String? = nil) {
             self.id = id
             name = MeetingPage.name(id)
-            self.look = look
-            self.status = status
-            self.since = since
-            self.progress = progress
+            self.work = work
             self.action = action
+            self.note = note
         }
 
-        // "Writing the transcript, 1:24" while it runs.
         public func text(at now: Date) -> String {
-            guard let since else { return status }
-            return "\(status), \(MeetingSurfaces.elapsedText(seconds: max(now.timeIntervalSince(since), 0)))"
+            note ?? work.label(at: now)
         }
     }
 
@@ -66,14 +52,12 @@ extension MeetingPage {
         }
         if let before = earlier(own) { return "Comes after \(Self.phrase(before))." }
         let state = meeting.steps[own]
-        let needed = state.waiting?.models ?? []
         return switch state.status {
         case .done where segments.isEmpty && meeting.steps.transcript.status == .done: "No speech was heard."
         case .done: own == .summary && SummaryRequest.isTooShort(segments) ? "Too short to summarise. The transcript holds every word." : nil
         case .running: own == .speakers ? "Speakers are being found." : "The \(Self.name(own).lowercased()) is being written."
         case .failed: own == .speakers ? "Speakers could not be told apart." : "The \(Self.name(own).lowercased()) could not be written."
-        case .waiting where !needed.isEmpty: "Waits for the \(Self.phrase(needed))."
-        case .waiting where state.waiting == .dictation: "Waits for dictation to finish."
+        case .waiting where state.waiting != nil: state.waiting.map { "\($0.label)." }
         case .waiting: own == .speakers ? "Speakers are not found yet." : "Not written yet."
         }
     }
@@ -87,43 +71,41 @@ extension MeetingPage {
         await load()
     }
 
-    static func working(_ step: MeetingProcessing.Step) -> String {
+    static func activity(_ step: MeetingProcessing.Step) -> WorkState.Activity {
         switch step {
-        case .transcript: "Writing the transcript"
-        case .echo: "Checking for echo"
-        case .speakers: "Finding speakers"
-        case .summary: "Writing the summary"
+        case .transcript: .transcribing
+        case .echo: .checkingForEcho
+        case .speakers: .findingSpeakers
+        case .summary: .writingSummary
         }
     }
 
     private func row(_ step: MeetingProcessing.Step) -> StepRow {
         let state = meeting.steps[step]
-        let needed = state.status == .waiting ? state.waiting?.models ?? [] : []
-        if !needed.isEmpty { return modelRow(step, needed) }
+        if state.status == .waiting, let reason = state.waiting, !reason.models.isEmpty { return modelRow(step, reason) }
         return switch state.status {
-        case .done: StepRow(step, look: .done, status: step == .echo && !hasCleanedTrack ? "Not needed" : "Done")
+        case .done: StepRow(step, .done, note: step == .echo && !hasCleanedTrack ? "Not needed" : nil)
         case .running: runningRow(step, since: state.since)
         case .failed: failedRow(step, step.problem(state.problem))
-        case .waiting: StepRow(step, look: .waiting, status: Self.waiting(state.waiting))
+        case .waiting: StepRow(step, .waiting(state.waiting ?? .turn))
         }
     }
 
     private func failedRow(_ step: MeetingProcessing.Step, _ problem: Problem) -> StepRow {
-        StepRow(step, look: .failed, status: problem.message, action: problem.canRetry ? .retry : nil)
+        StepRow(step, .failed(problem), action: problem.canRetry ? .retry : nil)
     }
 
     private func runningRow(_ step: MeetingProcessing.Step, since: Date?) -> StepRow {
-        guard step == .transcript, let fraction = progress.fractions[meeting.id] else {
-            return StepRow(step, look: .working, status: Self.working(step), since: since)
-        }
-        return StepRow(step, look: .working, status: "\(Self.working(step)), \(MetricText.percent(fraction))", progress: fraction)
+        let fraction = step == .transcript ? progress.fractions[meeting.id] : nil
+        return StepRow(step, .working(Self.activity(step), progress: fraction, since: since))
     }
 
     // Downloading with its share of the bytes; a failed download says so and offers Try again.
-    private func modelRow(_ step: MeetingProcessing.Step, _ needed: [NeededModel]) -> StepRow {
+    private func modelRow(_ step: MeetingProcessing.Step, _ reason: WaitReason) -> StepRow {
+        let needed = reason.models
         let statuses = needed.map(models.status(of:))
-        let failure = statuses.lazy.compactMap { status -> String? in if case .failed(let reason) = status { reason } else { nil } }.first
-        if let failure { return StepRow(step, look: .failed, status: failure, action: .download) }
+        let failure = statuses.lazy.compactMap { status -> Problem? in if case .failed(let problem) = status { problem } else { nil } }.first
+        if let failure { return StepRow(step, .failed(failure), action: .download) }
         let sizes = needed.map(models.size(of:))
         let total = Double(sizes.reduce(0, +))
         let landed = zip(sizes, statuses).reduce(0.0) { sum, pair in
@@ -135,19 +117,9 @@ extension MeetingPage {
         }
         guard statuses.contains(where: { if case .downloading = $0 { true } else { false } }), total > 0 else {
             let size = total > 0 ? ", \(MetricText.bytes(Int64(total)))" : ""
-            return StepRow(step, look: .waiting, status: "Needs the \(Self.phrase(needed))\(size)", action: .download)
+            return StepRow(step, .waiting(reason), action: .download, note: reason.label + size)
         }
-        let fraction = landed / total
-        return StepRow(step, look: .working, status: "Downloading, \(MetricText.percent(fraction))", progress: fraction)
-    }
-
-    private static func phrase(_ needed: [NeededModel]) -> String {
-        switch needed.first {
-        case .speech: "speech model"
-        case .cleanup: "clean-up model"
-        case .meeting(.speakerSplit): "speaker model"
-        case .meeting, nil: "echo removal models"
-        }
+        return StepRow(step, .working(.downloading, progress: landed / total))
     }
 
     // Speakers run before the summary so it has their names, but a summary does not wait on speakers that failed.
@@ -167,16 +139,6 @@ extension MeetingPage {
         case .transcript: "the transcript"
         case .speakers: "the speakers"
         case .summary: "the summary"
-        }
-    }
-
-    private static func waiting(_ waiting: MeetingStepWaiting?) -> String {
-        switch waiting {
-        case .echoRemoval: "Waits for echo removal"
-        case .transcript: "Waits for the transcript"
-        case .dictation: "Waiting for dictation to finish."
-        // A step waiting for a model shows its download instead.
-        case .speechModel, .echoModels, .speakerModel, .cleanupModel, nil: "Waiting"
         }
     }
 }

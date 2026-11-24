@@ -21,7 +21,7 @@ struct MeetingsSidebar: View {
             Rectangle().fill(Color.rule).frame(height: ControlMetrics.edge)
             VStack(alignment: .leading, spacing: 0) {
                 if let error = library.importError {
-                    ImportNotice(message: error, onDismiss: library.dismissImportError)
+                    SidebarNotice(message: error, onDismiss: library.dismissImportError)
                 }
                 Button { Task { await session.toggle() } } label: {
                     Label(session.isMeetingUnderWay ? "Stop recording" : "Record a meeting", systemImage: "record.circle")
@@ -206,15 +206,17 @@ private struct StateLine: View {
                     let time = MeetingSurfaces.elapsedText(seconds: session.recordedSeconds)
                     Label(session.state == .paused ? "Paused, \(time)" : "Recording, \(time)", systemImage: "record.circle")
                 }
-            case .working(let verb):
+            case .work(let work) where work == .working(.importing): Label(work.label, systemImage: "square.and.arrow.down")
+            case .work(let work):
                 Label {
-                    Text(verb)
+                    Text(work.label)
                 } icon: {
-                    LoadingRadio(colour: .ink2, size: Symbol.note, lineWidth: ControlMetrics.focusRing)
+                    switch work {
+                    case .working: LoadingRadio(colour: .ink2, size: Symbol.note, lineWidth: ControlMetrics.focusRing)
+                    case .failed: Image(systemName: "exclamationmark.circle")
+                    case .idle, .waiting, .done: Image(systemName: "hourglass")
+                    }
                 }
-            case .importing: Label("Importing", systemImage: "square.and.arrow.down")
-            case .processing: Label("Processing", systemImage: "hourglass")
-            case .failed(let reason): Label(reason, systemImage: "exclamationmark.circle")
             }
         }
         .labelStyle(TightLabelStyle())
@@ -222,24 +224,6 @@ private struct StateLine: View {
         .foregroundStyle(Color.ink2)
         .lineLimit(1)
         .padding(.top, MeetingWindowMetrics.stateTop)
-    }
-}
-
-// Why the last recording was not imported; it stays until dismissed or the next import.
-private struct ImportNotice: View {
-    let message: String
-    let onDismiss: () -> Void
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
-            FormError(message: message).frame(maxWidth: .infinity, alignment: .leading)
-            Button(action: onDismiss) { Image(systemName: "xmark") }
-                .buttonStyle(.icon)
-                .accessibilityLabel("Dismiss")
-                .iconLabel("Dismiss")
-        }
-        .padding(EdgeInsets(top: Space.s4, leading: Space.s8, bottom: Space.s8, trailing: 0))
-        .onAppear { AccessibilityNotification.Announcement(message).post() }
     }
 }
 

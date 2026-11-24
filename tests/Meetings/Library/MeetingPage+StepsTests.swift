@@ -38,7 +38,7 @@ struct MeetingPageStepsTests {
 
         let transcript = try #require(page.steps?.first { $0.id == .transcript })
 
-        #expect(transcript.text(at: started.addingTimeInterval(84)) == "Writing the transcript, 1:24" && transcript.look == .working)
+        #expect(transcript.text(at: started.addingTimeInterval(84)) == "Transcribing, 1:24" && transcript.work.activity == .transcribing)
         #expect(page.emptyLine(for: .summary) == "Comes after the transcript.")
         #expect(page.emptyLine(for: .transcript) == "The transcript is being written.")
         #expect(page.emptyLine(for: .speakers) == "Comes after the transcript.")
@@ -62,13 +62,13 @@ struct MeetingPageStepsTests {
         let row = { page.steps?.first { $0.id == .transcript } }
 
         let run = Task { [store, id = page.meeting.id] in try await transcript.run(id, in: store) }
-        await until { row()?.progress == 0.25 }
+        await until { row()?.work.progress == 0.25 }
         let halfway = row()
         held.open()
         try await run.value
-        await until { row()?.progress == nil }
+        await until { row()?.work.progress == nil }
 
-        #expect(halfway?.text(at: .now) == "Writing the transcript, 25%")
+        #expect(halfway?.text(at: .now) == "Transcribing, 25%")
     }
 
     @Test func a_tab_with_nothing_to_show_says_why() async throws {
@@ -106,8 +106,8 @@ struct MeetingPageStepsTests {
         await until { if case .failed = library.status(of: .speakerSplit) { true } else { false } }
         let failed = try #require(page.steps?.first { $0.id == .speakers })
 
-        #expect(downloading.text(at: .now) == "Downloading, 50%" && downloading.progress == 0.5 && downloading.action == nil)
-        #expect(failed.look == .failed && failed.action == .download)
+        #expect(downloading.text(at: .now) == "Downloading, 50%" && downloading.work.progress == 0.5 && downloading.action == nil)
+        #expect(failed.work.problem?.canRetry == true && failed.action == .download)
         #expect(failed.text(at: .now) == "The download failed. Check the connection and try again.")
     }
 }

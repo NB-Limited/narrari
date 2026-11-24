@@ -3,9 +3,10 @@ import Foundation
 public enum AppStatus: Equatable {
     case ready
     case recording
-    case transcribing
-    case cleaning
-    case modelLoading(fraction: Double)
+    // A dictation after its recording: transcribing, cleaning up, or waiting for the speech model.
+    case dictation(WorkState)
+    // The speech model on its way while no dictation runs: downloading or getting ready.
+    case model(WorkState)
     case modelFailed
     case accessibilityMissing
     case microphoneMissing
@@ -14,13 +15,12 @@ public enum AppStatus: Equatable {
     public init(session: DictationSession, permissions: Permissions) {
         switch (session.phase, session.modelState) {
         case (.recording, _): self = .recording
-        case (.cleaning, _): self = .cleaning
-        case (.transcribing, _), (.pasting, _): self = .transcribing
+        case (.transcribing, _), (.cleaning, _), (.pasting, _): self = .dictation(session.work)
         case (.idle, _) where !permissions.isAccessibilityAllowed: self = .accessibilityMissing
         case (.idle, _) where permissions.microphone == .denied: self = .microphoneMissing
         case (.idle, .ready): self = .ready
-        case (.idle, .preparing(let fraction, _)): self = .modelLoading(fraction: fraction)
-        case (.idle, .missing): self = .modelLoading(fraction: 0)
+        case (.idle, .preparing): self = .model(session.modelState.work)
+        case (.idle, .missing): self = .model(.working(.downloading, progress: 0))
         case (.idle, .failed): self = .modelFailed
         }
     }
@@ -29,9 +29,7 @@ public enum AppStatus: Equatable {
         switch self {
         case .ready: "Ready"
         case .recording: "Recording"
-        case .transcribing: "Transcribing"
-        case .cleaning: "Cleaning up"
-        case .modelLoading: "Model loading"
+        case .dictation(let work), .model(let work): work.label
         case .modelFailed: "Speech model could not load"
         case .accessibilityMissing: "Accessibility not allowed"
         case .microphoneMissing: "Microphone not allowed"

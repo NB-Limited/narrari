@@ -11,9 +11,14 @@ public struct PillLabel: Sendable, Equatable {
         self.isError = isError
     }
 
-    public static let transcribing = PillLabel(symbol: "waveform", text: "Transcribing")
-    public static let cleaning = PillLabel(symbol: "text.alignleft", text: "Cleaning up")
-    public static let modelLoading = PillLabel(symbol: "hourglass", text: "Model loading")
+    public static let transcribing = PillLabel(symbol: "waveform", text: WorkState.Activity.transcribing.label)
+    public static let cleaning = PillLabel(symbol: "text.alignleft", text: WorkState.Activity.cleaningUp.label)
+    public static let waitingForModel = PillLabel(symbol: "hourglass", text: WaitReason.speechModel.label)
+
+    // The speech model on its way while a dictation records: "Downloading" or "Getting ready", without a figure, so the pill keeps its width.
+    static func model(_ state: ModelState) -> PillLabel? {
+        state.work.activity.map { PillLabel(symbol: "hourglass", text: $0.label) }
+    }
 
     public init(_ notice: Notice) {
         let symbol = switch notice {

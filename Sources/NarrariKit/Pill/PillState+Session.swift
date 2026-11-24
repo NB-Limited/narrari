@@ -8,13 +8,13 @@ extension PillState {
         let caption = session.liveText.isEmpty ? nil : session.liveText
         switch session.phase {
         case .recording where session.isListening:
-            let slot = notice ?? (session.isModelLoading ? .modelLoading : nil)
+            let slot = notice ?? PillLabel.model(session.modelState)
             self.init(capsule: .recording(slot: slot), caption: caption, silentMicrophone: session.silentMicrophone)
         case .transcribing, .cleaning:
             if let notice {
                 self.init(capsule: .notice(notice))
-            } else if session.isWaitingForModel {
-                self.init(capsule: .notice(.modelLoading))
+            } else if session.work == .waiting(.speechModel) {
+                self.init(capsule: .notice(.waitingForModel))
             } else {
                 self.init(capsule: .working(session.phase == .cleaning ? .cleaning : .transcribing), caption: caption)
             }
