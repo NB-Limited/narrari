@@ -167,13 +167,10 @@ public final class MeetingLibrary {
         for await _ in store.changes { await refresh() }
     }
 
-    // How long typing pauses before the search runs, so a burst of keys starts one search, not one per key.
-    private static let typingPause = Duration.milliseconds(150)
-
     // From the search field, once per change of its text; a newer change cancels this one.
     public func searchTyped() async {
         if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            guard (try? await Task.sleep(for: Self.typingPause)) != nil else { return }
+            guard (try? await Task.sleep(for: TextSearch.typingPause)) != nil else { return }
         }
         await search()
     }

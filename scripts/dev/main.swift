@@ -450,6 +450,7 @@ let rigOnly = option("--only", in: &arguments)
 let isRigQuick = flag("--quick", in: &arguments)
 let isJSON = flag("--json", in: &arguments)
 let searchMemoryFolder = option("--search-memory", in: &arguments)
+let historySearchMemoryFolder = option("--history-search-memory", in: &arguments)
 let liveMinutes = option("--live-until", in: &arguments).flatMap(Double.init) ?? (flag("--live", in: &arguments) ? .infinity : nil)
 let usage = """
     usage: narrari-dev transcribe [--dictionary <folder>] <audio or video file>
@@ -495,7 +496,13 @@ do {
         await pipeline(arguments[1], engine: engine, dictionary: dictionary ?? .shared, isCleanupOn: !isCleanupOff)
     case ("modes", 1): try modes()
     case ("speed", 1):
-        if let searchMemoryFolder { try await printSearchMemory(searchMemoryFolder) } else if try await !speed(json: isJSON, models: .shared) { exit(1) }
+        if let searchMemoryFolder {
+            try await printSearchMemory(searchMemoryFolder)
+        } else if let historySearchMemoryFolder {
+            try await printHistorySearchMemory(historySearchMemoryFolder)
+        } else if try await !speed(json: isJSON, models: .shared) {
+            exit(1)
+        }
     case ("meeting", 5) where arguments[1] == "replay":
         try await meetingReplay(
             (arguments[2], arguments[3]), into: arguments[4], minutes: replayMinutes, fastPPM: fastPPM, liveMinutes: liveMinutes

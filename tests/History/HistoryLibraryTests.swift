@@ -11,7 +11,8 @@ struct HistoryLibraryTests {
     private let shown = "Hi Anna, Thursday at ten works for me."
 
     private func library(
-        store: HistoryStore, engine: FakeCleanupEngine? = nil, activeDictation: @escaping @MainActor () -> UUID? = { nil }
+        store: HistoryStore, engine: FakeCleanupEngine? = nil, activeDictation: @escaping @MainActor () -> UUID? = { nil },
+        now: @escaping () -> Date = Date.init
     ) -> HistoryLibrary {
         let pipeline = TextPipeline(
             cleanup: CleanupService(engine: engine, settings: settings.store, clock: clock),
@@ -24,7 +25,9 @@ struct HistoryLibraryTests {
             ),
             modes: ModeStore(root: folder.url), settings: settings.store
         )
-        return HistoryLibrary(store: store, retranscription: retranscription, apps: AppDirectory(), activeDictation: activeDictation)
+        return HistoryLibrary(
+            store: store, retranscription: retranscription, apps: AppDirectory(), activeDictation: activeDictation, now: now, clock: clock
+        )
     }
 
     // A dictation Tidy cleaned up, as a live one is saved.
@@ -147,8 +150,10 @@ struct HistoryLibraryTests {
         await library.refresh()
 
         library.searchText = "anna"
+        library.search()
         let found = library.results.map(\.id)
         library.searchText = "invoice"
+        library.search()
         let none = library.results.map(\.id)
         let second = try await tidied(in: store)
         library.searchText = "thursday"
@@ -157,6 +162,50 @@ struct HistoryLibraryTests {
         #expect(found == [first.id])
         #expect(none.isEmpty)
         #expect(Set(library.results.map(\.id)) == [first.id, second.id])
+    }
+
+    @Test func a_search_waits_for_typing_to_pause_and_more_typing_replaces_it() async throws {
+        let store = HistoryStore(root: folder.url)
+        let library = library(store: store)
+        let anna = try await tidied(in: store)
+        let id = UUID()
+        let invoice = HistoryEntry(
+            id: id, startedAt: Date(), finalText: "The invoice is late.", audioFile: HistoryEntry.audioFileName(for: id), outcome: .pasted
+        )
+        try await store.append(invoice)
+        await library.refresh()
+        let all = library.results.map(\.id)
+
+        library.searchText = "anna"
+        let replaced = Task { await library.searchTyped() }
+        await clock.waitForSleepers(1)
+        let whilePaused = library.results.map(\.id)
+        replaced.cancel()
+        await replaced.value
+        let afterReplaced = library.results.map(\.id)
+        library.searchText = "invoice"
+        let typed = Task { await library.searchTyped() }
+        await clock.waitForSleepers(1)
+        clock.advance(by: TextSearch.typingPause)
+        await typed.value
+
+        #expect(Set(all) == [anna.id, invoice.id])
+        #expect(whilePaused == all && afterReplaced == all)
+        #expect(library.results.map(\.id) == [invoice.id])
+    }
+
+    @Test func the_day_titles_follow_midnight_without_a_new_dictation() async throws {
+        let store = HistoryStore(root: folder.url)
+        var now = Date()
+        let library = library(store: store, now: { now })
+        _ = try await tidied(in: store)
+        await library.refresh()
+
+        let today = library.days.map(\.title)
+        now = now.addingTimeInterval(86_400)
+
+        #expect(today == ["Today"])
+        #expect(library.days.map(\.title) == ["Yesterday"])
     }
 
     @Test func the_list_is_loading_until_its_first_read_and_an_unreadable_history_is_not_empty() async throws {

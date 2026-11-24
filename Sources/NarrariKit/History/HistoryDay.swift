@@ -7,9 +7,15 @@ public struct HistoryDay: Identifiable, Sendable, Equatable {
 
     // Entries keep their order inside a day, so newest first in gives newest first out.
     public static func group(_ entries: [HistoryEntry], now: Date, calendar: Calendar = HistoryStore.localCalendar) -> [HistoryDay] {
-        Dictionary(grouping: entries) { calendar.startOfDay(for: $0.startedAt) }
-            .sorted { $0.key > $1.key }
-            .map { HistoryDay(id: $0.key, title: title(for: $0.key, now: now, calendar: calendar), entries: $0.value) }
+        // Entries come mostly in order, so the day found for one usually holds the next.
+        var day: DateInterval?
+        return Dictionary(grouping: entries) { entry in
+            if let day, day.start <= entry.startedAt, entry.startedAt < day.end { return day.start }
+            day = calendar.dateInterval(of: .day, for: entry.startedAt)
+            return day?.start ?? calendar.startOfDay(for: entry.startedAt)
+        }
+        .sorted { $0.key > $1.key }
+        .map { HistoryDay(id: $0.key, title: title(for: $0.key, now: now, calendar: calendar), entries: $0.value) }
     }
 
     public static func title(for day: Date, now: Date, calendar: Calendar = HistoryStore.localCalendar) -> String {

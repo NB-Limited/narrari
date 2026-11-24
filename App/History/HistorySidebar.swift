@@ -19,7 +19,7 @@ struct HistorySidebar: View {
                 leadingSymbol: "magnifyingglass", focus: isSearchFocused
             )
             .padding(EdgeInsets(top: Space.s2, leading: Space.s14, bottom: Space.s10, trailing: Space.s14))
-            .onChange(of: library.searchText) { library.searchChanged() }
+            .task(id: library.searchText) { await library.searchTyped() }
             list
             Rectangle().fill(Color.rule).frame(height: ControlMetrics.edge)
             VStack(alignment: .leading, spacing: 0) {

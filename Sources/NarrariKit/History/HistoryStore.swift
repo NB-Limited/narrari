@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 public enum HistoryError: ProblemError, Equatable {
     case entryGone
@@ -97,7 +98,7 @@ public actor HistoryStore {
     // Appends only while the entry's newest line exists and is not a deletion, so a late result never revives it.
     public func update(_ entry: HistoryEntry) throws {
         let url = dayFileURL(for: entry.startedAt)
-        let lines = FileManager.default.fileExists(atPath: url.path) ? try parse(url).entries : []
+        let lines = FileManager.default.fileExists(atPath: url.path) ? try Self.parse(url).entries : []
         guard let latest = lines.last(where: { $0.id == entry.id }), !latest.isDeleted else { throw HistoryError.entryGone }
         try append(entry)
     }
@@ -134,7 +135,7 @@ public actor HistoryStore {
         let today = calendar.startOfDay(for: now)
         for (url, day) in try dayFiles() {
             guard let age = calendar.dateComponents([.day], from: day, to: today).day, age > days else { continue }
-            for entry in try parse(url).entries where !kept.contains(entry.id) {
+            for entry in try Self.parse(url).entries where !kept.contains(entry.id) {
                 guard let audio = audioURL(named: entry.audioFile), FileManager.default.fileExists(atPath: audio.path) else { continue }
                 try FileManager.default.removeItem(at: audio)
             }
@@ -168,7 +169,7 @@ public actor HistoryStore {
         var ids = Set<UUID>()
         for (url, day) in try dayFiles() {
             guard let age = calendar.dateComponents([.day], from: day, to: today).day, age > days else { continue }
-            ids.formUnion(try parse(url).entries.filter { !$0.isDeleted && $0.isFinished }.map(\.id))
+            ids.formUnion(try Self.parse(url).entries.filter { !$0.isDeleted && $0.isFinished }.map(\.id))
         }
         return ids.count
     }
@@ -237,21 +238,30 @@ public actor HistoryStore {
             FileStamp(url).map { (url.lastPathComponent, $0) }
         }) { first, _ in first }
         if let cache, cache.stamps == stamps { return cache.scan }
+        let files = try dayFiles().map(\.url)
+        // Day files are parsed side by side, then taken in name order, so the first that fails still fails the read.
+        let parsed = Mutex([Result<Parsed, any Error>?](repeating: nil, count: files.count))
+        DispatchQueue.concurrentPerform(iterations: files.count) { index in
+            let result = Result { try Self.parse(files[index]) }
+            parsed.withLock { $0[index] = result }
+        }
         var scan = Scan()
-        for (url, _) in try dayFiles() {
-            let parsed = try parse(url)
-            scan.skipped += parsed.skipped
-            for entry in parsed.entries { _ = scan.add(entry, from: url.lastPathComponent) }
+        for (url, result) in zip(files, parsed.withLock { $0 }.compactMap { $0 }) {
+            let day = try result.get()
+            scan.skipped += day.skipped
+            for entry in day.entries { _ = scan.add(entry, from: url.lastPathComponent) }
         }
         scan.sortLive()
         cache = (stamps, scan)
         return scan
     }
 
-    private func parse(_ url: URL) throws -> (entries: [HistoryEntry], skipped: Int) {
+    private typealias Parsed = (entries: [HistoryEntry], skipped: Int)
+
+    private static func parse(_ url: URL) throws -> Parsed {
         var entries: [HistoryEntry] = []
         var skipped = 0
-        for line in try Data(contentsOf: url).split(separator: Self.newline) {
+        for line in try Data(contentsOf: url).split(separator: newline) {
             if let entry = try? HistoryEntry(jsonLine: Data(line)) {
                 entries.append(entry)
             } else {
