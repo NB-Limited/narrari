@@ -108,9 +108,9 @@ struct MainView: View {
             } else if let entry = library.selected {
                 ReaderPage(entry: entry, library: library, playback: playback, isDetailsOpen: $isReaderDetailsOpen)
                     .id(entry.id)
-            } else if library.hasLoaded, !library.entries.isEmpty {
+            } else if library.load == .idle, !library.entries.isEmpty {
                 NoResultsPage(query: library.searchText)
-            } else if library.hasLoaded {
+            } else if library.load == .idle {
                 EmptyHistoryPage(prompt: EmptyHistory(model: speechModel(), hotkey: settings.shortcuts.hotkeyName, kept: settings.history.keptLine))
             }
         case .meetings:
@@ -122,7 +122,7 @@ struct MainView: View {
             case .unreadable(let folder)?:
                 UnreadableMeetingPage(folder: folder)
             case nil:
-                if meetings.library.hasLoaded, meetings.library.entries.isEmpty {
+                if meetings.library.load == .idle, meetings.library.entries.isEmpty {
                     EmptyMeetingsPage(
                         retentionDays: meetings.library.retentionDays, onRecord: { Task { await meetings.session.toggle() } }, onImport: onImport
                     )

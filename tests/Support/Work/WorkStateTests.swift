@@ -28,4 +28,11 @@ struct WorkStateTests {
 
         #expect(failed.label == "Echo removal failed. Try again." && failed.problem?.canRetry == true)
     }
+
+    @Test func a_narrow_line_says_failed_and_leaves_the_message_to_the_page() {
+        let failed = WorkState.failed(Problem("meeting.summary-failed", "The summary could not be written. Try again.", canRetry: true))
+
+        #expect(failed.brief == "Failed")
+        #expect(WorkState.waiting(.turn).brief == "Waits for its turn")
+    }
 }

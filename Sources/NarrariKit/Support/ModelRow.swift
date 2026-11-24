@@ -4,11 +4,10 @@ import Foundation
 public struct ModelRow: Sendable, Equatable {
     public enum Status: Sendable, Equatable {
         case notDownloaded
-        case downloading(Double)
-        case gettingReady
         case downloaded
         case inUse
-        case failed(Problem)
+        // Downloading, getting ready from files on this Mac, or failed.
+        case work(WorkState)
     }
 
     public enum Action: Sendable, Equatable {
@@ -30,19 +29,23 @@ public struct ModelRow: Sendable, Equatable {
         isOnDisk = bytesOnDisk > 0
         let isOnDisk = isOnDisk
         status = switch state {
-        case .preparing(let fraction, true): .downloading(fraction)
-        case .preparing(let fraction, false): isOnDisk ? .gettingReady : .downloading(fraction)
+        case .preparing(let fraction, false) where !isOnDisk: .work(.working(.downloading, progress: fraction))
+        case .preparing, .failed: .work(state.work)
         case .ready, .missing: !isOnDisk ? .notDownloaded : isChosen ? .inUse : .downloaded
-        case .failed(let reason): .failed(reason)
         }
+    }
+
+    public var work: WorkState {
+        if case .work(let work) = status { return work }
+        return .idle
     }
 
     public var action: Action? {
         switch status {
         case .notDownloaded: canUse ? .download : nil
-        case .downloading: .cancel
-        case .failed: .retry
-        case .downloaded, .gettingReady, .inUse: nil
+        case .work(.failed): .retry
+        case .work: isGettingReady ? nil : .cancel
+        case .downloaded, .inUse: nil
         }
     }
 
@@ -50,7 +53,7 @@ public struct ModelRow: Sendable, Equatable {
     public var mark: ChoiceMark {
         switch status {
         case .inUse: .chosen
-        case .downloading, .gettingReady, .failed: isChosen ? .chosen : .unavailable
+        case .work: isChosen ? .chosen : .unavailable
         case .downloaded: canUse ? .available : .unavailable
         case .notDownloaded: .unavailable
         }
@@ -58,34 +61,31 @@ public struct ModelRow: Sendable, Equatable {
 
     public var isInUse: Bool { status == .inUse }
 
-    public var isGettingReady: Bool { status == .gettingReady }
+    public var isGettingReady: Bool { work.activity == .gettingReady }
 
     public var canDelete: Bool {
-        status == .downloaded || status == .inUse || status == .gettingReady
+        status == .downloaded || status == .inUse || isGettingReady
     }
 
     public var group: ModelGroup {
         if !canUse { return .noLongerUsed }
         switch status {
-        case .downloaded, .inUse, .gettingReady: return .onThisMac
-        case .failed: return isOnDisk ? .onThisMac : .toDownload
-        case .notDownloaded, .downloading: return .toDownload
+        case .downloaded, .inUse: return .onThisMac
+        case .work: return isGettingReady || (work.problem != nil && isOnDisk) ? .onThisMac : .toDownload
+        case .notDownloaded: return .toDownload
         }
     }
 
-    public var progress: Double? {
-        if case .downloading(let fraction) = status { return fraction }
-        return nil
-    }
-
+    // "Downloading, 46%" with its share for the bar; nothing while it gets ready, so the row keeps its size.
     public var progressLine: String? {
-        progress.map { WorkState.working(.downloading, progress: $0).label }
+        work.activity == .downloading ? work.label : nil
     }
 
-    public var failure: String? {
-        if case .failed(let problem) = status { return problem.message }
-        return nil
+    public var progress: Double? {
+        work.activity == .downloading ? work.progress ?? 0 : nil
     }
+
+    public var failure: String? { work.problem?.message }
 }
 
 // Models on this Mac first, then those to download, then files the catalogue no longer lists.

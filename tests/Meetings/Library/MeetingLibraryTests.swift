@@ -20,7 +20,9 @@ struct MeetingLibraryTests {
         let modelStore = ModelStore(root: folder.url.appending(path: "Models"))
         fetch = FakeModelFetch(store: modelStore, isHeld: true)
         models = MeetingModels(store: modelStore, fetch: fetch.fetch)
-        library = MeetingLibrary(store: store, processor: processor, models: models, settings: settings.store, recording: { nil })
+        library = MeetingLibrary(
+            store: store, processor: processor, models: models, progress: MeetingTranscript.Progress(), settings: settings.store, recording: { nil }
+        )
     }
 
     @discardableResult

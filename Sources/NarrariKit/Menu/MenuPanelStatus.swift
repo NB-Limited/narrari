@@ -11,14 +11,18 @@ public enum MenuPanelStatus: Equatable, Sendable {
     // The meeting's time is shown while it records or is paused.
     case meeting(title: String, elapsed: String?)
 
-    public init(_ status: AppStatus, meeting: MeetingSession.State, hotkey: String, elapsed: TimeInterval, meetingElapsed: TimeInterval) {
+    // A meeting being processed reads the step under way: its share with the bar, else its time.
+    public init(
+        _ status: AppStatus, meeting: MeetingSession.State, meetingWork: WorkState, hotkey: String, elapsed: TimeInterval,
+        meetingElapsed: TimeInterval, now: Date
+    ) {
         switch (status, meeting) {
         case (.ready, .recording), (.model, .recording):
             self = .meeting(title: "Recording meeting", elapsed: MeetingSurfaces.elapsedText(seconds: meetingElapsed))
         case (.ready, .paused), (.model, .paused):
             self = .meeting(title: "Meeting paused", elapsed: MeetingSurfaces.elapsedText(seconds: meetingElapsed))
         case (.ready, .processing), (.model, .processing):
-            self = .meeting(title: WorkState.working(.writingSummary).label, elapsed: nil)
+            self = meetingWork.progress == nil ? .meeting(title: meetingWork.label(at: now), elapsed: nil) : .loading(meetingWork)
         default:
             self.init(status, hotkey: hotkey, elapsed: elapsed)
         }

@@ -15,6 +15,12 @@ struct MenuPanelView: View {
         VStack(alignment: .leading, spacing: 0) {
             MenuStatusSection(context: context)
                 .accessibilitySortPriority(1)
+            if !model.notes.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(model.notes) { MenuNoteRow(note: $0, context: context) }
+                }
+                .padding(MenuPanelMetrics.fixRowPadding)
+            }
             if let last = model.lastDictation {
                 LastDictationCard(last: last, context: context)
             } else {

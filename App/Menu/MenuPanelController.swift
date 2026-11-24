@@ -14,7 +14,6 @@ final class MenuPanelController: NSObject, NSWindowDelegate {
     }
 
     private let model: MenuPanel
-    private let permissions: Permissions
     private let surfaces: MeetingSurfaces
     private let motion: ReduceMotion
     private let perform: (MenuPanelAction) -> Void
@@ -27,11 +26,9 @@ final class MenuPanelController: NSObject, NSWindowDelegate {
     private var pending: Task<Void, Never>?
 
     init(
-        model: MenuPanel, permissions: Permissions, surfaces: MeetingSurfaces, motion: ReduceMotion,
-        perform: @escaping (MenuPanelAction) -> Void
+        model: MenuPanel, surfaces: MeetingSurfaces, motion: ReduceMotion, perform: @escaping (MenuPanelAction) -> Void
     ) {
         self.model = model
-        self.permissions = permissions
         self.surfaces = surfaces
         self.motion = motion
         self.perform = perform
@@ -54,39 +51,57 @@ final class MenuPanelController: NSObject, NSWindowDelegate {
         phase == .closed ? open() : close()
     }
 
-    // While the screen is watched during a meeting, the plain N: the dot would say a meeting records.
+    // While the screen is watched during a meeting, the plain N: the dot would say a meeting records. A recording's dot
+    // wins over the problem mark, which sits in the same corner.
     private func showIcon() {
-        let (isAllowed, marksRecording) = withObservationTracking {
-            (permissions.isAccessibilityAllowed, surfaces.marksRecording)
+        let (attention, marksRecording) = withObservationTracking {
+            (model.attention, surfaces.marksRecording)
         } onChange: { [weak self] in
             Task { @MainActor in self?.showIcon() }
         }
         guard let button = statusItem.button else { return }
         button.window?.sharingType = .none
-        if isAllowed {
-            button.image = marksRecording ? Self.recordingIcon : NSImage(named: "MenuBarIcon")
-            button.setAccessibilityLabel(marksRecording ? "Narrari, recording a meeting" : "Narrari")
+        if marksRecording {
+            button.image = Self.recordingIcon
+            button.setAccessibilityLabel("Narrari, recording a meeting")
+        } else if let attention {
+            button.image = Self.problemIcon
+            button.setAccessibilityLabel("Narrari: \(attention)")
         } else {
-            let label = "Narrari: Accessibility not allowed"
-            button.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: label)
-            button.image?.isTemplate = true
-            button.setAccessibilityLabel(label)
+            button.image = NSImage(named: "MenuBarIcon")
+            button.setAccessibilityLabel("Narrari")
         }
     }
 
     // The N with a 4 pt dot at its lower right, still a template so macOS tints it.
-    private static let recordingIcon: NSImage? = {
-        guard let mark = NSImage(named: "MenuBarIcon") else { return nil }
-        let image = NSImage(size: mark.size, flipped: false) { rect in
-            mark.draw(in: rect)
-            let dot = MenuPanelMetrics.recordingDot
-            NSColor.black.setFill()
-            NSBezierPath(ovalIn: NSRect(x: rect.maxX - dot, y: rect.minY, width: dot, height: dot)).fill()
+    private static let recordingIcon = markedIcon { rect in
+        let dot = MenuPanelMetrics.recordingDot
+        NSColor.black.setFill()
+        NSBezierPath(ovalIn: NSRect(x: rect.maxX - dot, y: rect.minY, width: dot, height: dot)).fill()
+    }
+
+    // The N with a small warning triangle at its lower right, cut out of the N so the two never touch.
+    private static let problemIcon = markedIcon { rect in
+        let size = MenuPanelMetrics.problemMark
+        let configuration = NSImage.SymbolConfiguration(pointSize: size, weight: .bold)
+        guard let mark = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration) else { return }
+        let box = NSRect(x: rect.maxX - mark.size.width, y: rect.minY, width: mark.size.width, height: mark.size.height)
+        let gap = MenuPanelMetrics.problemMarkGap
+        mark.draw(in: box.insetBy(dx: -gap, dy: -gap), from: .zero, operation: .destinationOut, fraction: 1)
+        mark.draw(in: box, from: .zero, operation: .sourceOver, fraction: 1)
+    }
+
+    private static func markedIcon(_ drawMark: @escaping (NSRect) -> Void) -> NSImage? {
+        guard let letter = NSImage(named: "MenuBarIcon") else { return nil }
+        let image = NSImage(size: letter.size, flipped: false) { rect in
+            letter.draw(in: rect)
+            drawMark(rect)
             return true
         }
         image.isTemplate = true
         return image
-    }()
+    }
 
     private func open() {
         guard phase == .closed, let anchor = statusItem.button?.window else { return }

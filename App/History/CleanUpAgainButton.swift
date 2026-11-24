@@ -15,7 +15,7 @@ struct CleanUpAgainButton: View {
     private static let nothingHeard = "Nothing heard to clean up"
 
     var body: some View {
-        let running = library.cleaningUp[entry.id]
+        let running = library.work[entry.id].flatMap { $0.state.activity == .cleaningUp ? $0.label : nil }
         let isDone = done.isOn && running == nil
         Button(action: open) {
             Image(systemName: isDone ? "checkmark" : "text.alignleft")
@@ -24,9 +24,9 @@ struct CleanUpAgainButton: View {
         .background(AnchorView(anchor: anchor))
         .disabled(entry.rawText.isEmpty || isTranscribing)
         .allowsHitTesting(running == nil)
-        .accessibilityLabel(running?.runningLabel ?? Self.name)
+        .accessibilityLabel(running ?? Self.name)
         .accessibilityHint(entry.rawText.isEmpty ? Self.nothingHeard : "Replaces the text with the heard text cleaned up by a prompt you choose")
-        .iconLabel(running?.runningLabel ?? (isDone ? landed.doneLabel : restingLabel), isPinned: running != nil || isDone)
+        .iconLabel(running ?? (isDone ? landed.doneLabel : restingLabel), isPinned: running != nil || isDone)
     }
 
     private var restingLabel: String {

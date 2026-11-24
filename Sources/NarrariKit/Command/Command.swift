@@ -234,7 +234,7 @@ public enum Command: Sendable, Equatable {
         do {
             return try await read()
         } catch {
-            return .failed("The \(kind.rawValue) could not be read.\n")
+            return .failed(error.problem(or: kind.readFailed).message + "\n")
         }
     }
 }
