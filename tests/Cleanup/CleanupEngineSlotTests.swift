@@ -1,6 +1,35 @@
 import Foundation
 import NarrariKit
+import Synchronization
 import Testing
+
+// Loads only once its gate opens, as a model read from disk takes seconds.
+private final class SlowEngine: CleanupEngine {
+    let name: String
+    let runsInApp = true
+    let gate: Gate
+    let loaded = Gate.counter()
+    private let current = Mutex(ModelState.missing)
+
+    init(_ name: String, gate: Gate = .counter()) {
+        self.name = name
+        self.gate = gate
+    }
+
+    var state: ModelState { current.withLock { $0 } }
+
+    func load() async throws {
+        try await gate.pass()
+        current.withLock { $0 = .ready }
+        try await loaded.pass()
+    }
+
+    func unload() async {
+        current.withLock { $0 = .missing }
+    }
+
+    func rewrite(_ transcript: String, instruction: String, growth: ReplyGrowth) async throws -> String { transcript }
+}
 
 @MainActor
 struct CleanupEngineSlotTests {
@@ -47,6 +76,26 @@ struct CleanupEngineSlotTests {
         #expect(engine.unloads.arrivals == 0)
         #expect(engine.loads.arrivals == 1)
         slot.release()
+    }
+
+    @Test func a_model_changed_again_while_the_first_still_loads_is_let_go_once_that_load_ends() async {
+        let first = SlowEngine("first", gate: Gate())
+        let second = SlowEngine("second")
+        let chosen = Mutex([first, second])
+        let slot = CleanupEngineSlot(
+            settings: settings.store, keychain: FakeKeychain(), store: ModelStore(root: folder.url),
+            clock: clock, choose: { _ in chosen.withLock { $0.removeFirst() } }
+        )
+
+        slot.reload()
+        await first.gate.waitForArrivals(1)
+        slot.reload()
+        first.gate.open()
+        await first.loaded.waitForArrivals(1)
+        await second.loaded.waitForArrivals(1)
+
+        #expect(first.state == .missing)
+        #expect(second.state == .ready)
     }
 
     @Test func model_on_this_mac_loads_at_the_first_dictation_not_at_launch() async throws {
