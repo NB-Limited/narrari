@@ -471,6 +471,7 @@ let usage = """
            narrari-dev meeting replay [--minutes <n>] [--fast-ppm <n>] [--live | --live-until <minutes>]
                                       <mic file> <system file> <scratch data folder>
            narrari-dev meeting rig [--quick] [--only <scenario name part>]
+           narrari-dev meeting call-watch
            narrari-dev meeting models <scratch data folder> <scratch models folder>
            narrari-dev meeting process <scratch data folder> <scratch models folder>
            narrari-dev meeting summaries <scratch data folder> <scratch models folder> <out folder> [<model id>...]
@@ -513,6 +514,10 @@ do {
         )
     case ("meeting", 2) where arguments[1] == "rig":
         if try await !recordingRig(isQuick: isRigQuick, only: rigOnly) { exit(1) }
+    case ("meeting", 2) where arguments[1] == "call-watch":
+        if try await !callWatch() { exit(1) }
+    case ("meeting", 3) where arguments[1] == "call-hold":
+        try callHold(uid: arguments[2])
     case ("meeting", 7) where arguments[1] == "rig-play":
         try await rigPlay(Array(arguments[2...]))
     case ("meeting", 4) where arguments[1] == "models":

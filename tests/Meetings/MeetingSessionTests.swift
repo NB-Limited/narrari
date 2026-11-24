@@ -38,6 +38,7 @@ struct MeetingSessionTests {
     private let folder = TemporaryFolder()
     private let settings = ThrowawaySettings()
     private let clock = TestClock()
+    private let callClock = TestClock()
     private let screenClock = TestClock()
     private let watcher = FakeScreenWatcher()
     private let namesClock = TestClock()
@@ -62,7 +63,7 @@ struct MeetingSessionTests {
                 settings: settings.store, permissions: permissions, inputs: replay, system: replay,
                 freeSpace: { _ in 10_000_000_000 }, hostNow: { [replay] in replay.clock.hostTime }, clock: TestClock()
             ),
-            calls: CallDetector(processes: processes, settings: settings.store, clock: clock),
+            calls: CallDetector(processes: processes, settings: settings.store, clock: callClock),
             calendar: CalendarLink(source: FakeCalendar(events: [event])),
             screen: ScreenWatch(watcher: watcher, clock: screenClock),
             names: CallWindowNames(source: windows, settings: settings.store, clock: namesClock, ownerName: "Mila Novak"),
@@ -188,8 +189,8 @@ struct MeetingSessionTests {
         settings.store.set(startsByItself, for: MeetingsSettings.startsByItself)
         session.follow()
         await processes.set([FakeProcesses.app(Self.zoom, input: true, output: true)])
-        await clock.waitForSleepers(1)
-        clock.advance(by: .seconds(3))
+        await callClock.waitForSleeper(until: callClock.now.advanced(by: .seconds(3)))
+        callClock.advance(by: .seconds(3))
         await until { session.state != .idle }
         await session.start()
         await until { session.recordingID != nil }
@@ -198,8 +199,8 @@ struct MeetingSessionTests {
         NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.willSleepNotification, object: nil)
         await until { session.recordingID == nil }
         NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
-        await clock.waitForSleepers(1)
-        clock.advance(by: .seconds(3))
+        await callClock.waitForSleeper(until: callClock.now.advanced(by: .seconds(3)))
+        callClock.advance(by: .seconds(3))
 
         await until { startsByItself ? session.recordingID != nil : session.state == .offered(app: Self.zoom) }
         let meetings = try await store.meetings().meetings

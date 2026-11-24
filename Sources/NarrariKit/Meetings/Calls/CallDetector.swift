@@ -7,10 +7,12 @@ public enum CallEvent: Sendable, Equatable {
 
 // A call is another app holding a microphone for 3 seconds. It ends once that app has let go of the microphone
 // and stopped playing, because some apps release the microphone on mute. One call at a time: a second app raises nothing.
+// Core Audio does not tell of every change, so the apps are read again every 2 seconds whatever it tells.
 public actor CallDetector {
     public nonisolated let events: AsyncStream<CallEvent>
 
     private static let hold: Duration = .seconds(3)
+    private static let recheck: Duration = .seconds(2)
 
     private let continuation: AsyncStream<CallEvent>.Continuation
     private let processes: any AudioProcessSource
@@ -20,6 +22,7 @@ public actor CallDetector {
     private var call: String?
     private var holding: [String: Task<Void, Never>] = [:]
     private var isStarted = false
+    private var rechecking: Task<Void, Never>?
 
     public init(processes: any AudioProcessSource, settings: SettingsStore, clock: any Clock<Duration>) {
         self.processes = processes
@@ -33,11 +36,15 @@ public actor CallDetector {
         isStarted = true
         processes.watch { [weak self] in await self?.review() }
         review()
+        rechecking = Task { [weak self, clock] in
+            while (try? await clock.sleep(for: Self.recheck)) != nil, let self { await self.review(isRecheck: true) }
+        }
     }
 
     // For good: the events end with it.
     public func stop() {
         processes.unwatch()
+        rechecking?.cancel()
         holding.values.forEach { $0.cancel() }
         holding = [:]
         continuation.finish()
@@ -49,27 +56,37 @@ public actor CallDetector {
         review()
     }
 
-    private func review() {
-        let ignored = Set(settings.value(MeetingsSettings.ignoredApps))
-        let others = processes.processes()
-            .map { AudioProcess(pid: $0.pid, bundleID: Self.owner(of: $0.bundleID), isRunningInput: $0.isRunningInput, isRunningOutput: $0.isRunningOutput) }
-            .filter { $0.pid != ownPID && !$0.bundleID.isEmpty && !ignored.contains($0.bundleID) }
+    // A change a recheck finds is one Core Audio did not tell of, or one whose notice has not arrived yet.
+    private func review(isRecheck: Bool = false) {
         if let call {
-            guard !others.contains(where: { $0.bundleID == call && ($0.isRunningInput || $0.isRunningOutput) }) else { return }
+            guard !others(reading: [.input, .output], of: call).contains(where: { $0.bundleID == call && ($0.isRunningInput || $0.isRunningOutput) })
+            else { return }
             self.call = nil
+            Log.event("call-ended")
+            if isRecheck { Log.event("call-end-missed-by-notification") }
             continuation.yield(.ended)
         }
-        let apps = Set(others.filter(\.isRunningInput).map(\.bundleID))
+        let apps = Set(others(reading: .input).filter(\.isRunningInput).map(\.bundleID))
         for (app, wait) in holding where !apps.contains(app) {
             wait.cancel()
             holding[app] = nil
         }
         for app in apps where holding[app] == nil {
+            Log.event("call-microphone-taken")
+            if isRecheck { Log.event("call-microphone-missed-by-notification") }
             holding[app] = Task { [weak self, clock] in
                 guard (try? await clock.sleep(for: Self.hold)) != nil else { return }
                 await self?.confirm(app)
             }
         }
+    }
+
+    private func others(reading reads: AudioProcessReads, of app: String? = nil) -> [AudioProcess] {
+        let ignored = Set(settings.value(MeetingsSettings.ignoredApps))
+        let isOther = { [ownPID] (pid: pid_t, owner: String) in pid != ownPID && !owner.isEmpty && !ignored.contains(owner) && (app == nil || owner == app) }
+        return processes.processes { isOther($0, Self.owner(of: $1)) ? reads : [] }
+            .map { AudioProcess(pid: $0.pid, bundleID: Self.owner(of: $0.bundleID), isRunningInput: $0.isRunningInput, isRunningOutput: $0.isRunningOutput) }
+            .filter { isOther($0.pid, $0.bundleID) }
     }
 
     // A browser or an Electron app holds the microphone in a helper process; the call belongs to the app that owns it.
@@ -87,6 +104,7 @@ public actor CallDetector {
         call = app
         holding.values.forEach { $0.cancel() }
         holding = [:]
+        Log.event("call-confirmed")
         continuation.yield(.started(app: app))
     }
 }

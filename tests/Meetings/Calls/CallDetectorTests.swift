@@ -25,6 +25,11 @@ struct CallDetectorTests {
         return (detector, listening)
     }
 
+    // The 2-second recheck sleeps on the same clock, so only the hold's deadline proves the hold is asleep.
+    private func held() async {
+        await clock.waitForSleeper(until: clock.now.advanced(by: .seconds(3)))
+    }
+
     private func zoom(input: Bool, output: Bool) -> AudioProcess {
         FakeProcesses.app("us.zoom.xos", input: input, output: output)
     }
@@ -33,7 +38,7 @@ struct CallDetectorTests {
         let (detector, listening) = await detector()
 
         await processes.set([zoom(input: true, output: true)])
-        await clock.waitForSleepers(1)
+        await held()
         clock.advance(by: .seconds(3))
         await until { heard.events == [.started(app: "us.zoom.xos")] }
 
@@ -50,7 +55,7 @@ struct CallDetectorTests {
         _ = await detector()
 
         await processes.set([ownDictation, zoom(input: true, output: false)])
-        await clock.waitForSleepers(1)
+        await held()
         clock.advance(by: .seconds(2))
         await processes.set([ownDictation, zoom(input: false, output: false)])
         await processes.set([ownDictation, FakeProcesses.app("com.microsoft.teams2", input: true, output: true)])
@@ -65,7 +70,7 @@ struct CallDetectorTests {
     func the_call_ends_only_once_its_app_has_released_the_microphone_and_stopped_playing(isStillPlaying: Bool) async {
         let (detector, listening) = await detector()
         await processes.set([zoom(input: true, output: true)])
-        await clock.waitForSleepers(1)
+        await held()
         clock.advance(by: .seconds(3))
         await until { heard.events == [.started(app: "us.zoom.xos")] }
 
@@ -85,7 +90,7 @@ struct CallDetectorTests {
         let (detector, listening) = await detector()
 
         await processes.set([FakeProcesses.app(helper, input: true, output: true)])
-        await clock.waitForSleepers(1)
+        await held()
         clock.advance(by: .seconds(3))
         await until { heard.events == [.started(app: app)] }
         await processes.set([FakeProcesses.app(helper, input: false, output: false)])
@@ -93,5 +98,42 @@ struct CallDetectorTests {
         await listening.value
 
         #expect(heard.events == [.started(app: app), .ended])
+    }
+
+    // Core Audio tells nothing when an app already playing takes the microphone, nor of every release.
+    @Test func a_microphone_taken_or_let_go_with_no_notice_is_found_within_2_seconds() async {
+        let (detector, listening) = await detector()
+
+        await processes.set([zoom(input: false, output: true)], isTold: false)
+        await processes.set([zoom(input: true, output: true)], isTold: false)
+        await clock.waitForSleeper(until: .init(offset: .seconds(2)))
+        clock.advance(by: .seconds(2))
+        await held()
+        clock.advance(by: .seconds(3))
+        await until { heard.events == [.started(app: "us.zoom.xos")] }
+
+        await processes.set([zoom(input: false, output: false)], isTold: false)
+        await clock.waitForSleeper(until: .init(offset: .seconds(7)))
+        clock.advance(by: .seconds(2))
+        await until { heard.events == [.started(app: "us.zoom.xos"), .ended] }
+        await detector.stop()
+        await listening.value
+    }
+
+    // As at a call's start, when the headset switches to its call mode.
+    @Test func a_microphone_taken_let_go_and_taken_again_unannounced_still_raises_the_call() async {
+        _ = await detector()
+
+        await processes.set([zoom(input: true, output: true)])
+        await held()
+        clock.advance(by: .milliseconds(500))
+        await processes.set([zoom(input: false, output: true)])
+        await processes.set([zoom(input: true, output: true)], isTold: false)
+        await clock.waitForSleeper(until: .init(offset: .seconds(2)))
+        clock.advance(by: .milliseconds(1_500))
+        await held()
+        clock.advance(by: .seconds(3))
+
+        await until { heard.events == [.started(app: "us.zoom.xos")] }
     }
 }

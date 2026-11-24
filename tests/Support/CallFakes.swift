@@ -2,7 +2,7 @@ import Foundation
 import NarrariKit
 import Synchronization
 
-// Core Audio's process list, set by the test; a change is reviewed before set returns.
+// Core Audio's process list, set by the test; a change is reviewed before set returns, unless the test keeps it untold.
 final class FakeProcesses: AudioProcessSource {
     private struct State {
         var list: [AudioProcess] = []
@@ -11,16 +11,24 @@ final class FakeProcesses: AudioProcessSource {
 
     private let state = Mutex(State())
 
-    func processes() -> [AudioProcess] { state.withLock { $0.list } }
+    func processes(reading reads: (pid_t, String) -> AudioProcessReads) -> [AudioProcess] {
+        state.withLock { $0.list }.map { process in
+            let asked = reads(process.pid, process.bundleID)
+            return AudioProcess(
+                pid: process.pid, bundleID: process.bundleID,
+                isRunningInput: asked.contains(.input) && process.isRunningInput, isRunningOutput: asked.contains(.output) && process.isRunningOutput
+            )
+        }
+    }
     func watch(_ onChange: @escaping @Sendable () async -> Void) { state.withLock { $0.onChange = onChange } }
     func unwatch() { state.withLock { $0.onChange = nil } }
 
-    func set(_ list: [AudioProcess]) async {
+    func set(_ list: [AudioProcess], isTold: Bool = true) async {
         let onChange = state.withLock { state in
             state.list = list
             return state.onChange
         }
-        await onChange?()
+        if isTold { await onChange?() }
     }
 
     static func app(_ bundleID: String, input: Bool, output: Bool, pid: pid_t = 4_242) -> AudioProcess {
