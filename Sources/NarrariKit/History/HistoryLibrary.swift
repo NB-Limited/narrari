@@ -4,20 +4,28 @@ import Observation
 @MainActor
 @Observable
 public final class HistoryLibrary {
-    public private(set) var entries: [HistoryEntry] = []
+    public private(set) var entries: [HistoryEntry] = [] {
+        didSet { searchResults() }
+    }
     public private(set) var skippedLines = 0
     public private(set) var hasLoaded = false
     public private(set) var retranscribing: Set<UUID> = []
     public private(set) var cleaningUp: [UUID: CleanupChoice] = [:]
     public private(set) var errors: [UUID: String] = [:]
-    public var searchText = ""
+    public var searchText = "" {
+        didSet { if searchText != oldValue { searchResults() } }
+    }
     public var selection: UUID? {
         didSet { if selection != oldValue { pendingDeletion = nil } }
     }
     // The entry waiting for the user to confirm its deletion.
     public var pendingDeletion: UUID?
     // A file being transcribed: listed first, whatever the search, until it is saved or given up.
-    public private(set) var pending: HistoryEntry?
+    public private(set) var pending: HistoryEntry? {
+        didSet { searchResults() }
+    }
+    // Searched once per change of the entries, the query or the pending file, never per redraw.
+    public private(set) var results: [HistoryEntry] = []
 
     @ObservationIgnored private let store: HistoryStore
     @ObservationIgnored private let retranscription: Retranscription
@@ -37,11 +45,6 @@ public final class HistoryLibrary {
         self.apps = apps
         self.activeDictation = activeDictation
         self.now = now
-    }
-
-    public var results: [HistoryEntry] {
-        let shown = pending.flatMap { pending in entries.contains { $0.id == pending.id } ? nil : [pending] } ?? []
-        return shown + HistorySearch.entries(entries, matching: searchText, apps: apps)
     }
 
     public var days: [HistoryDay] { HistoryDay.group(results, now: now()) }
@@ -162,6 +165,11 @@ public final class HistoryLibrary {
     func endPending() {
         pending = nil
         keepSelectionInResults()
+    }
+
+    private func searchResults() {
+        let shown = pending.flatMap { pending in entries.contains { $0.id == pending.id } ? nil : [pending] } ?? []
+        results = shown + HistorySearch.entries(entries, matching: searchText, apps: apps)
     }
 
     private func keepSelectionInResults() {

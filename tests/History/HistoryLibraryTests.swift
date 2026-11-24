@@ -139,4 +139,23 @@ struct HistoryLibraryTests {
         #expect(engine.calls.count == 1)
         #expect(library.entries.first?.prompt == Prompt.message.id)
     }
+
+    @Test func results_follow_the_query_and_new_dictations() async throws {
+        let store = HistoryStore(root: folder.url)
+        let library = library(store: store)
+        let first = try await tidied(in: store)
+        await library.refresh()
+
+        library.searchText = "anna"
+        let found = library.results.map(\.id)
+        library.searchText = "invoice"
+        let none = library.results.map(\.id)
+        let second = try await tidied(in: store)
+        library.searchText = "thursday"
+        await library.refresh()
+
+        #expect(found == [first.id])
+        #expect(none.isEmpty)
+        #expect(Set(library.results.map(\.id)) == [first.id, second.id])
+    }
 }
