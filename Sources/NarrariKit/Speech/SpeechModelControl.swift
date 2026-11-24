@@ -86,10 +86,11 @@ public final class SpeechModelControl {
         download()
     }
 
-    // Only a download is cancelled, so its files are incomplete; they go with it, or the model would read as on this Mac.
-    public func cancel() {
+    // Only a download is cancelled, so its files are incomplete and go with it.
+    @discardableResult
+    public func cancel() -> Task<Void, Never> {
         let model = chosen
-        Task {
+        return Task {
             await local.unload()
             await livePreview.release()
             do {
@@ -116,7 +117,7 @@ public final class SpeechModelControl {
     public func refreshSize() {
         for model in ParakeetModel.allCases {
             do {
-                bytesOnDisk[model] = try store.bytesOnDisk(named: model.folder)
+                bytesOnDisk[model] = store.isPresent(model) ? try store.bytesOnDisk(named: model.folder) : 0
             } catch {
                 Log.failure("speech-model-size", error: error)
             }

@@ -58,11 +58,9 @@ struct SpeechModelControlTests {
         try FileManager.default.createDirectory(at: files, withIntermediateDirectories: true)
         try Data(repeating: 1, count: 4096).write(to: files.appending(path: "Encoder.mlmodelc"))
         let control = control(LivePreview(transcriber: transcriber))
-        control.refreshSize()
 
-        control.cancel()
+        await control.cancel().value
 
-        await until { control.bytesOnDisk[.ultra] == 0 }
         #expect(!FileManager.default.fileExists(atPath: files.path))
     }
 

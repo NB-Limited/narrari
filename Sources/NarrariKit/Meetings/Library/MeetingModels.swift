@@ -65,7 +65,7 @@ public final class MeetingModels: MeetingModelSupply {
 
     public func refresh() {
         for model in Self.all where downloads[model] == nil {
-            let bytes = (try? store.bytesOnDisk(named: model.folder)) ?? 0
+            let bytes = store.isPresent(named: model.folder) ? (try? store.bytesOnDisk(named: model.folder)) ?? 0 : 0
             statuses[model] = bytes > 0 ? .onThisMac(bytes: bytes) : .notDownloaded
         }
     }
