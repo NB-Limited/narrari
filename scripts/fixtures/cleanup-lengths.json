@@ -1,0 +1,26 @@
+[
+  {
+    "id": "short",
+    "text": "um so tell Ivan the the report is late and I will send it tomorrow"
+  },
+  {
+    "id": "medium",
+    "text": "hi Daniel just wanted to let you know that the the deployment is scheduled for Thursday the 14th at 10 a.m. uh and it should take about 45 minutes so the API will be down during that window um if anyone on your team has a demo booked for that morning please move it to the afternoon and let me know if that causes any problems"
+  },
+  {
+    "id": "long",
+    "text": "okay so um a quick update on the project for everyone this week we finished the the login redirect fix so after the session times out it now goes back to the dashboard instead of the home page and that went out to staging on Tuesday uh Maria tested it on her laptop and on her phone and both worked fine the second thing is the invoice export which was slow for big customers it used to take about 40 seconds for a customer with five thousand invoices and now it takes about six seconds because we stopped loading every line item up front um the third thing is the websocket handler there is still a memory leak in there it grows by about 200 megabytes a day and we restart it every night for now but I want to find the real cause before Friday so Ivan and I are going to pair on that tomorrow morning uh then for next week the plan is to ship the new pricing page to production on Monday the 18th at 9 a.m. and to start on the the mobile app login after that I think that is about two weeks of work but I will know more once we have looked at the API changes it needs and um yeah if anyone has questions just send me a message or grab me after the stand up tomorrow"
+  },
+  {
+    "id": "short-bulgarian",
+    "text": "ъъ кажи на Иван че докладът е готов и ще го пратя утре сутринта"
+  },
+  {
+    "id": "medium-bulgarian",
+    "text": "здравей Даниел само да ти кажа че ъъ пускането е насрочено за четвъртък 14-ти в 10 сутринта и ще отнеме около 45 минути така че системата няма да работи през това време ако някой от екипа ти има демонстрация тази сутрин моля да я премести за следобед и ми кажи ако това създава някакви проблеми"
+  },
+  {
+    "id": "long-bulgarian",
+    "text": "добре значи ъъ кратко обновление по проекта тази седмица оправихме пренасочването след вход така че когато сесията изтече се връща към таблото а не към началната страница и това излезе на тестовия сървър във вторник Мария го пробва на лаптопа и на телефона си и работи и на двете второто нещо е експортът на фактури който беше бавен за големи клиенти преди отнемаше около 40 секунди за клиент с пет хиляди фактури а сега отнема около шест секунди защото вече не зареждаме всеки ред предварително третото нещо е обработчикът на уебсокети там все още има изтичане на памет расте с около 200 мегабайта на ден и засега го рестартираме всяка нощ но искам да намеря истинската причина преди петък така че с Иван ще работим заедно по това утре сутринта"
+  }
+]

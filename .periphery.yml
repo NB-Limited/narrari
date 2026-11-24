@@ -1,0 +1,23 @@
+# Run by scripts/ci.sh after both builds; it reads their indexes and builds nothing.
+project: Narrari.xcodeproj
+schemes:
+  - Narrari
+skip_build: true
+index_store_path:
+  - build/Index.noindex/DataStore   # the app and NarrariKit, from xcodebuild
+  - .build/out                      # NarrariKit, tests and narrari-dev, from swift build and swift test
+strict: true
+relative_results: true
+disable_update_check: true
+retain_swift_ui_previews: true
+retain_encodable_properties: true   # ChatRequest fields are read by JSONEncoder
+retain_equatable_properties: true   # test value types are read by the synthesized ==
+disable_redundant_public_analysis: true  # tests import NarrariKit without @testable, so public for tests is by design
+retain_assign_only_property_types:  # holding the object or task alive is the use
+  - RecorderPill?
+  - MenuPanelController?
+  - MeetingChip?
+  - CallNotice?
+  - "[Task<Void, Never>]"
+report_exclude:
+  - App/MainView.swift              # Periphery 3.8.0 misses reads through a @State projection ($isReaderDetailsOpen)

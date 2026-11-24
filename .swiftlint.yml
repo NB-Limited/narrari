@@ -1,0 +1,42 @@
+# SwiftLint refuses to run on any other version, also from the editor hook.
+swiftlint_version: 0.65.1
+strict: true
+
+included:
+  - Sources
+  - App
+  - tests
+  - scripts/dev
+excluded:
+  - .build
+  - build
+
+disabled_rules:
+  - identifier_name                # short names here are deliberate: x, y, on, v3, s8 tokens
+  - type_body_length               # file_length below is the one size rule
+  - void_function_in_ternary       # `isPlaying ? pause() : play()` is house style
+
+opt_in_rules:
+  - force_unwrapping               # a crash in the app is a failed dictation
+  - implicitly_unwrapped_optional
+  - unowned_variable_capture       # weak, never unowned: unowned crashes when the owner goes first
+  - discarded_notification_center_observer
+  - empty_count
+  - empty_string
+  - sorted_imports
+
+line_length:
+  warning: 160
+  ignores_urls: true
+  ignores_multiline_strings: true
+file_length:
+  warning: 500                     # nb-suite lint.md: a file past 500 lines is split
+  ignore_comment_only_lines: true
+function_parameter_count:
+  warning: 6                       # AudioInput's six-field stream description reads best as one call
+large_tuple:
+  warning: 4                       # named tuples of up to four fields read fine; a fifth wants a struct
+nesting:
+  type_level: 2                    # TextDiff.Segment.Kind is the natural shape
+cyclomatic_complexity:
+  ignores_case_statements: true    # state machines switch over every case; that is not complexity

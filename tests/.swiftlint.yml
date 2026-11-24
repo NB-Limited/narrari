@@ -1,0 +1,6 @@
+# Tests may crash on a broken fixture; that fails the run loudly, which is what a test should do.
+disabled_rules:
+  - force_unwrapping
+  - force_try
+  - implicitly_unwrapped_optional
+  - optional_data_string_conversion  # test helpers decode bytes they wrote as UTF-8

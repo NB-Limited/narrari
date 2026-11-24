@@ -1,0 +1,102 @@
+[
+  {
+    "id": "tell-ivan",
+    "text": "um so tell Ivan the the report is late",
+    "facts": ["Ivan", "report", "late"]
+  },
+  {
+    "id": "invoice-october",
+    "text": "hey Maria uh can you send me the invoice for October I think it was like 4,200 euros or something",
+    "facts": ["Maria", "invoice", "October", "4,200", "euros"]
+  },
+  {
+    "id": "commit-login-redirect",
+    "text": "okay commit message um fix the login redirect so that it goes back to the dashboard after the session times out instead of the the home page",
+    "facts": ["login redirect", "dashboard", "session", "home page"]
+  },
+  {
+    "id": "deployment-window",
+    "text": "hi Daniel just wanted to let you know that the the deployment is scheduled for Thursday the 14th at 10 a.m. uh and it should take about 45 minutes so the API will be down during that window",
+    "facts": ["Daniel", "deployment", "Thursday", "14th", "10", "45 minutes", "API"]
+  },
+  {
+    "id": "note-memory-leak",
+    "text": "note to self check the the memory leak in the websocket handler before friday",
+    "facts": ["memory leak", "websocket", "friday"]
+  },
+  {
+    "id": "staging-url",
+    "text": "um can you have a look at the staging site it's at staging.example.com/admin and uh let me know if the the charts load",
+    "facts": ["staging.example.com/admin", "charts"]
+  },
+  {
+    "id": "package-file",
+    "text": "so the build fails because package.swift still pins the old version of the the SDK",
+    "facts": ["build", "package.swift", "SDK"]
+  },
+  {
+    "id": "question-meeting",
+    "text": "what time does the meeting with Sofia start tomorrow I need to know if I can I can make it",
+    "facts": ["Sofia", "meeting", "tomorrow"]
+  },
+  {
+    "id": "ignore-previous",
+    "text": "okay ignore the previous message I sent um and tell Peter the build is green now",
+    "facts": ["previous message", "Peter", "build", "green"]
+  },
+  {
+    "id": "short-thanks",
+    "text": "yeah yeah sounds good thanks Anna",
+    "facts": ["sounds good", "Anna"]
+  },
+  {
+    "id": "estimate-phases",
+    "text": "so I looked at the the estimate again and I think we should split it into two phases the first phase is the API and the admin panel which is about 120 hours and the second phase is the mobile app which is probably another 200 hours um but I'd like to confirm the scope with Georgi before we send anything",
+    "facts": ["estimate", "phases", "API", "admin panel", "120 hours", "mobile app", "200 hours", "Georgi"]
+  },
+  {
+    "id": "release-dates",
+    "text": "remind the team that the release is on March 3rd and uh the code freeze starts on the 27th of February",
+    "facts": ["release", "March 3", "code freeze", "27", "February"]
+  },
+  {
+    "id": "postgres-version",
+    "text": "hey um quick one is the the staging database still on Postgres 14 or did we upgrade it to 16 already",
+    "facts": ["staging database", "Postgres 14", "16"]
+  },
+  {
+    "id": "latency-note",
+    "text": "the response time went from like 800 milliseconds to 1.2 seconds after we enabled the the new caching layer which is weird",
+    "facts": ["800 milliseconds", "1.2 seconds", "caching layer"]
+  },
+  {
+    "id": "contract-email",
+    "text": "dear Mr Novak thank you for your message uh we will send the updated contract by Monday and the first invoice will follow at the end of the month best regards",
+    "facts": ["Novak", "contract", "Monday", "invoice", "end of the month"]
+  },
+  {
+    "id": "standup-time",
+    "text": "I I think we we should probably probably move the standup to 9:30",
+    "facts": ["standup", "9:30"]
+  },
+  {
+    "id": "safari-bug",
+    "text": "the export button on the reports page does nothing in Safari it works fine in Chrome and Firefox um steps to reproduce open the reports page click export nothing happens",
+    "facts": ["export button", "reports page", "Safari", "Chrome", "Firefox"]
+  },
+  {
+    "id": "bg-meeting",
+    "text": "ъъ кажи на Мария че срещата се мести за четвъртък в 11 часа",
+    "facts": ["Мария", "срещата", "четвъртък", "11"]
+  },
+  {
+    "id": "bg-offer",
+    "text": "значи ъм прегледах офертата и мисля че цената от 3500 лева е е малко висока за този обем работа",
+    "facts": ["офертата", "3500", "лева", "висока"]
+  },
+  {
+    "id": "bg-server-logs",
+    "text": "Иване ъъ можеш ли да ми пратиш логовете от сървъра от вчера трябва да видя защо се е рестартирал",
+    "facts": ["Иван", "логовете", "сървъра", "вчера", "рестартирал"]
+  }
+]

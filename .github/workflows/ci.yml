@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # The one hosted image with Xcode 27.2, the version the project is built and tested with. It is a beta image.
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: sudo xcode-select -s /Applications/Xcode_27.2.app
+      - run: brew install swiftlint periphery shellcheck
+      - run: bash scripts/check.sh
+      - run: bash scripts/check-rules.sh
+      - run: swift build
+      - run: swift test
