@@ -12,6 +12,7 @@ struct TranscriptTab: View {
     let followsLive: Bool
 
     @State private var editing: Int?
+    @State private var playing: Set<Int> = []
     @FocusState private var focused: Int?
 
     var body: some View {
@@ -30,6 +31,7 @@ struct TranscriptTab: View {
             }
         }
         .padding(.top, Space.s4)
+        .background(PlayingLines(page: page, playback: context.playback, playing: $playing))
         .onMoveCommand { direction in
             let count = page.segments.count
             guard editing == nil, count > 0 else { return }
@@ -98,7 +100,7 @@ struct TranscriptTab: View {
             } else {
                 TranscriptLine(
                     segment: segment, query: page.searchText, hasAudio: page.hasAudio,
-                    playback: context.playback, speaker: MeetingPage.name(of: turn.speaker)
+                    isPlaying: playing.contains(index), speaker: MeetingPage.name(of: turn.speaker)
                 ) {
                     focused = index
                     context.playback.play(from: segment.start)
@@ -112,12 +114,25 @@ struct TranscriptTab: View {
     }
 }
 
+// The only view that reads the playback position, 20 times a second; the lines hear of it only when the playing line changes.
+private struct PlayingLines: View {
+    let page: MeetingPage
+    let playback: AudioPlayback
+    @Binding var playing: Set<Int>
+
+    var body: some View {
+        let now = page.playingLines(at: playback.position, isPlaying: playback.isPlaying)
+        Color.clear.onChange(of: now, initial: true) { _, new in playing = new }
+    }
+}
+
 // One line of a turn; its words keep reading on from the line before.
-private struct TranscriptLine: View {
+// Equal when what it shows is equal, so a change of playing line redraws two lines, not every line; the actions follow the line.
+private struct TranscriptLine: View, Equatable {
     let segment: TranscriptSegment
     let query: String
     let hasAudio: Bool
-    let playback: AudioPlayback
+    let isPlaying: Bool
     let speaker: String
     let onPlay: () -> Void
     let onEdit: () -> Void
@@ -125,8 +140,12 @@ private struct TranscriptLine: View {
     @State private var isHovered = false
     @Environment(\.isFocused) private var isFocused
 
+    static func == (left: Self, right: Self) -> Bool {
+        left.segment == right.segment && left.query == right.query && left.hasAudio == right.hasAudio
+            && left.isPlaying == right.isPlaying && left.speaker == right.speaker
+    }
+
     var body: some View {
-        let isPlaying = hasAudio && playback.isPlaying && playback.position >= segment.start && playback.position < segment.end
         Text(Marked.text(segment.text, query: query))
             .font(Typeface.heard)
             .lineSpacing(Typeface.heardLineSpacing)
