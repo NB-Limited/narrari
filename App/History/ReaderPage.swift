@@ -64,7 +64,7 @@ struct ReaderPage: View {
             entry.outcomeNote.map { ("exclamationmark.circle", $0) },
             entry.isCleanupSkipped ? entry.cleanupNote.map { ("exclamationmark.circle", $0) } : nil,
             entry.speechFallbackNote.map { ("network.slash", $0) },
-            isWorking ? ("waveform", "Transcribing again") : nil,
+            isWorking ? ("waveform", WorkState.Activity.transcribing.label) : nil,
             library.cleaningUp[entry.id].map { ("text.alignleft", $0.runningLabel) }
         ].compactMap { $0 }
         if !lines.isEmpty || library.errors[entry.id] != nil {
@@ -160,8 +160,6 @@ struct FileProgressPage: View {
     let onCancel: () -> Void
 
     var body: some View {
-        let fraction = running.fraction
-        let label = "Transcribing, \(MetricText.percent(fraction))"
         VStack(spacing: 0) {
             Color.clear.frame(height: WindowMetrics.toolbarHeight)
             VStack(alignment: .leading, spacing: 0) {
@@ -169,12 +167,8 @@ struct FileProgressPage: View {
                     WhenText(entry: entry)
                     SourceLabel(entry: entry, apps: apps)
                 }
-                Label(label, systemImage: "waveform")
-                    .labelStyle(TightLabelStyle())
+                WorkLine(state: running.work, symbol: "waveform")
                     .font(Typeface.small)
-                    .foregroundStyle(Color.ink2)
-                    .padding(.top, Space.s8)
-                ProgressBar(fraction: fraction, label: label)
                     .padding(.top, Space.s8)
                 Button("Cancel", action: onCancel)
                     .buttonStyle(.secondary)

@@ -107,7 +107,7 @@ public struct MeetingSpeakers: MeetingStep {
         do {
             return try await split(track, speakers)
         } catch AudioModelError.notDownloaded {
-            throw MeetingStepWaiting.speakerModel
+            throw WaitReason.speakerModel
         }
     }
 

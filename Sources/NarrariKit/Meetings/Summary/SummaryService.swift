@@ -83,7 +83,7 @@ public final class SummaryService: MeetingStep {
             return outside
         }
         if chosen != SummaryModels.outside, let local = await engines.local(chosen) { return local }
-        guard let local = await engines.local(nil) else { throw MeetingStepWaiting.cleanupModel }
+        guard let local = await engines.local(nil) else { throw WaitReason.cleanupModel }
         return local
     }
 

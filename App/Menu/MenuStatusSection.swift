@@ -18,7 +18,7 @@ struct MenuStatusSection: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(spoken(status))
             .accessibilityAddTraits(.isHeader)
-            if case .loading(let fraction) = status {
+            if case .loading(let work) = status, let fraction = work.progress {
                 ProgressBar(fraction: fraction, width: nil, track: .panelTrack)
                     .padding(MenuPanelMetrics.progressPadding)
                     .accessibilityHidden(true)

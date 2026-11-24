@@ -244,7 +244,7 @@ public final class MenuPanel {
     private var initialHighlight: MenuPanelItem? {
         let list = items
         if list.contains(.fix) { return .fix }
-        if session.phase == .recording || session.isWaitingForModel { return .dictation }
+        if session.phase == .recording || session.work == .waiting(.speechModel) { return .dictation }
         return list.contains(.lastDictation) ? .lastDictation : list.first
     }
 

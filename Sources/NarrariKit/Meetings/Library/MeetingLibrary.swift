@@ -50,11 +50,7 @@ public final class MeetingLibrary {
 
     public enum RowState: Sendable, Equatable {
         case recording
-        // A step at work, by its verb: "Writing the transcript".
-        case working(String)
-        case importing
-        case processing
-        case failed(String)
+        case work(WorkState)
     }
 
     public private(set) var entries: [Entry] = []
@@ -131,14 +127,14 @@ public final class MeetingLibrary {
 
     public func state(of meeting: Meeting) -> RowState? {
         if meeting.id == recording() { return .recording }
-        if meeting.state == .importing { return .importing }
+        if meeting.state == .importing { return .work(.working(.importing)) }
         let steps = MeetingProcessing.Step.allCases.map { ($0, meeting.steps[$0]) }
-        if let running = steps.first(where: { $0.1.status == .running }) { return .working(MeetingPage.working(running.0)) }
-        if let failed = steps.first(where: { $0.1.status == .failed }) { return .failed(Self.failure(failed.0)) }
+        if let running = steps.first(where: { $0.1.status == .running }) { return .work(.working(MeetingPage.activity(running.0))) }
+        if let failed = steps.first(where: { $0.1.status == .failed }) { return .work(.failed(failed.0.problem(failed.1.problem))) }
         let needed = steps.filter { $0.1.status == .waiting }.flatMap { $0.1.waiting?.models ?? [] }
-        if needed.contains(where: { if case .downloading = models.status(of: $0) { true } else { false } }) { return .working("Downloading") }
-        if meeting.state != .recording, steps.contains(where: { $0.1.status != .done }) { return .processing }
-        return nil
+        if needed.contains(where: { if case .downloading = models.status(of: $0) { true } else { false } }) { return .work(.working(.downloading)) }
+        guard meeting.state != .recording, steps.contains(where: { $0.1.status != .done }) else { return nil }
+        return .work(.waiting(steps.lazy.compactMap { $0.1.status == .waiting ? $0.1.waiting : nil }.first ?? .turn))
     }
 
     public func refresh() async {
@@ -313,13 +309,4 @@ public final class MeetingLibrary {
     }
 
     static let importFailed = Problem("meeting.import-failed", "The recording could not be imported. Try again.", canRetry: true)
-
-    static func failure(_ step: MeetingProcessing.Step) -> String {
-        switch step {
-        case .echo: "Echo removal failed"
-        case .transcript: "Transcript failed"
-        case .speakers: "Speakers not found"
-        case .summary: "Summary failed"
-        }
-    }
 }

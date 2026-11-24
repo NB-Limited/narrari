@@ -10,9 +10,7 @@ struct ReaderToolbar: View {
     let isWorking: Bool
     let isCleaning: Bool
 
-    @State private var transcribed = TimedFlag()
     @FocusState private var isConfirmFocused: Bool
-    @Environment(\.reducesMotion) private var reduceMotion
 
     private static let noAudio = "No audio kept"
     private static let waitForCleanup = "Wait until it is cleaned up again"
@@ -46,28 +44,14 @@ struct ReaderToolbar: View {
             .iconLabel(deleteLabel, shortcut: library.canDelete(entry) ? "⌫" : nil)
     }
 
-    // While it runs, its own symbol turns in place; when the new text lands, a check says so.
-    @ViewBuilder private var transcribeAgain: some View {
-        let label = isWorking ? "Transcribing again" : transcribed.isOn ? "Transcribed again" : isCleaning ? Self.waitForCleanup
-            : hasAudio ? "Transcribe again from the audio" : Self.noAudio
-        Button {
-            Task {
-                await library.retranscribe(entry)
-                if library.errors[entry.id] == nil {
-                    transcribed.turnOn(for: Motion.copiedHold)
-                    AccessibilityNotification.Announcement("Transcribed again").post()
-                }
-            }
-        } label: {
-            Image(systemName: transcribed.isOn && !isWorking ? "checkmark" : "arrow.clockwise")
-                .symbolEffect(.rotate, options: .repeat(.continuous), isActive: isWorking && !reduceMotion)
-        }
-        .buttonStyle(.icon)
-        .disabled(!hasAudio || isCleaning)
-        .allowsHitTesting(!isWorking)
-        .accessibilityLabel(isWorking ? "Transcribing again" : "Transcribe again")
-        .accessibilityHint(hasAudio ? "Replaces the text with a new transcription of the audio" : Self.noAudio)
-        .iconLabel(label, isPinned: isWorking || transcribed.isOn)
+    private var transcribeAgain: some View {
+        AgainButton(
+            names: .transcribe,
+            isRunning: isWorking, unavailable: isCleaning ? Self.waitForCleanup : hasAudio ? nil : Self.noAudio,
+            hint: hasAudio ? "Replaces the text with a new transcription of the audio" : Self.noAudio,
+            hasLanded: { library.errors[entry.id] == nil },
+            action: { _ in Task { await library.retranscribe(entry) } }
+        )
     }
 
     private var deleteLabel: String {

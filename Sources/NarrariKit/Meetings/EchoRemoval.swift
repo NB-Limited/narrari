@@ -39,7 +39,7 @@ public struct EchoRemoval: MeetingStep {
             try await cancel(microphone, system, cleaned)
             Log.event("meeting-echo-removed")
         } catch AudioModelError.notDownloaded {
-            throw MeetingStepWaiting.echoModels
+            throw WaitReason.echoModels
         } catch {
             try? FileManager.default.removeItem(at: cleaned)
             throw error

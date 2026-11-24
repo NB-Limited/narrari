@@ -136,7 +136,7 @@ public struct MeetingTranscript: MeetingStep {
         do {
             return try await transcribe(track, progress).words
         } catch let error as TranscriberError where error == .notDownloaded {
-            throw MeetingStepWaiting.speechModel
+            throw WaitReason.speechModel
         }
     }
 

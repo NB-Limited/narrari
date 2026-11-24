@@ -143,7 +143,7 @@ struct MeetingProcessingTests {
 
     @Test func a_step_waiting_for_a_model_keeps_its_reason_and_what_needs_it_waits_until_it_is_done() async throws {
         let id = try await newMeeting()
-        let echo = FakeStep("echo", runs: runs, failing: MeetingStepWaiting.echoModels)
+        let echo = FakeStep("echo", runs: runs, failing: WaitReason.echoModels)
         let processing = MeetingProcessing(
             store: store, echo: echo, transcript: FakeStep("transcript", runs: runs), summary: FakeStep("summary", runs: runs)
         )
@@ -167,7 +167,7 @@ private final class NeedsCleanupModel: MeetingStep {
     let passes = Gate.counter()
 
     func run(_ id: UUID, in store: MeetingStore) async throws {
-        guard isOnThisMac.withLock({ $0 }) else { throw MeetingStepWaiting.cleanupModel }
+        guard isOnThisMac.withLock({ $0 }) else { throw WaitReason.cleanupModel }
         try await passes.pass()
     }
 }
@@ -178,7 +178,7 @@ private struct NeedsSpeakerModel: MeetingStep {
 
     func run(_ id: UUID, in store: MeetingStore) async throws {
         guard models.isPresent(named: AudioModel.speakerSplit.folder) else {
-            throw MeetingStepWaiting.speakerModel
+            throw WaitReason.speakerModel
         }
     }
 }

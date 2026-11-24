@@ -91,8 +91,8 @@ struct DictionaryPageModelTests {
         page.addWord()
 
         status.report(.preparing(fraction: 0.4, isDownloading: true))
-        await until { page.listening == .gettingReady(0.4) }
-        #expect(page.listeningLine == "Getting ready, 40%")
+        await until { page.listening == .preparing(.working(.downloading, progress: 0.4)) }
+        #expect(page.listeningLine == "Downloading, 40%")
 
         status.report(.ready)
         await until { page.listening == .quiet }

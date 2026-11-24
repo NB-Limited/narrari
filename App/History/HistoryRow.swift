@@ -10,7 +10,7 @@ struct HistoryRow: View {
 
     @State private var isHovered = false
 
-    private static let pendingText = "Transcribing the file"
+    private static let pendingText = WorkState.Activity.transcribing.label
 
     private var summary: String {
         if isPending { return Self.pendingText }

@@ -2,7 +2,7 @@ import Foundation
 
 // One step of the work after a meeting. It reads and writes the meeting through the store.
 public protocol MeetingStep: Sendable {
-    // Throws MeetingStepWaiting to leave the step waiting with its reason; any other error marks it failed.
+    // Throws WaitReason to leave the step waiting with its reason; any other error marks it failed.
     func run(_ id: UUID, in store: MeetingStore) async throws
 }
 
@@ -22,16 +22,7 @@ public protocol MeetingModelSupply: Sendable {
     func download(_ models: [NeededModel]) async -> Bool
 }
 
-// What a waiting step waits for, stored in meeting.json by its raw value.
-public enum MeetingStepWaiting: String, Error, Codable, Sendable {
-    case speechModel = "speech-model"
-    case echoModels = "echo-models"
-    case speakerModel = "speaker-model"
-    case cleanupModel = "cleanup-model"
-    case echoRemoval = "echo-removal"
-    case transcript
-    case dictation
-
+extension WaitReason {
     // The models to download for a step waiting for this.
     var models: [NeededModel] {
         switch self {
@@ -39,7 +30,7 @@ public enum MeetingStepWaiting: String, Error, Codable, Sendable {
         case .echoModels: [.meeting(.speechDetection), .meeting(.echoRemoval)]
         case .speakerModel: [.meeting(.speakerSplit)]
         case .cleanupModel: [.cleanup]
-        case .echoRemoval, .transcript, .dictation: []
+        case .echoRemoval, .transcript, .dictation, .turn: []
         }
     }
 
@@ -76,7 +67,7 @@ public actor MeetingProcessing {
             }
         }
 
-        var waitingFor: MeetingStepWaiting? {
+        var waitingFor: WaitReason? {
             switch self {
             case .echo: .echoRemoval
             case .transcript: .transcript
@@ -233,7 +224,7 @@ public actor MeetingProcessing {
             try await worker.run(id, in: store)
             Self.logTiming(step, (ContinuousClock.now - start) / .seconds(1))
             return Meeting.Step(.done)
-        } catch let waiting as MeetingStepWaiting {
+        } catch let waiting as WaitReason {
             return Meeting.Step(.waiting, for: waiting)
         } catch is CancellationError {
             return Meeting.Step(.waiting)

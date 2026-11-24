@@ -53,14 +53,14 @@ public final class DictionaryPageModel {
     public enum Listening: Sendable, Equatable {
         case quiet
         case firstWordDownloads
-        case gettingReady(Double)
+        case preparing(WorkState)
         case failed
     }
 
     public var listening: Listening {
         guard !list.words.isEmpty else { return isListenerOnDisk ? .quiet : .firstWordDownloads }
         return switch listenerStatus.state {
-        case .preparing(let fraction, _): .gettingReady(fraction)
+        case .preparing: .preparing(listenerStatus.state.work)
         case .failed: .failed
         case .missing, .ready: .quiet
         }
@@ -70,7 +70,7 @@ public final class DictionaryPageModel {
         switch listening {
         case .quiet: nil
         case .firstWordDownloads: "The first word downloads about 100 MB."
-        case .gettingReady(let fraction): "Getting ready, \(MetricText.percent(fraction))"
+        case .preparing(let work): work.label
         case .failed: VocabularyError.notReady.problem.message
         }
     }

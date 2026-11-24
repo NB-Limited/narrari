@@ -24,7 +24,12 @@ struct HistorySidebar: View {
             Rectangle().fill(Color.rule).frame(height: ControlMetrics.edge)
             VStack(alignment: .leading, spacing: 0) {
                 if let notice = fileJob.notice {
-                    FileNoticeView(notice: notice, onDismiss: fileJob.dismissNotice)
+                    switch notice {
+                    case .failed(let fileName, let problem):
+                        SidebarNotice(title: fileName, message: problem.message, onDismiss: fileJob.dismissNotice)
+                    case .busy:
+                        SidebarNotice(message: FileJob.busyMessage, isError: false, onDismiss: fileJob.dismissNotice)
+                    }
                 }
                 SidebarRow(title: "Transcribe a file", symbol: "waveform.badge.plus", shortcut: "⌘O", action: onTranscribeFile)
                 SettingsRowButton(isPermissionMissing: isPermissionMissing, action: onSettings)
@@ -103,47 +108,5 @@ struct HistorySidebar: View {
     private func select(_ entry: HistoryEntry) {
         library.selection = entry.id
         onSelect()
-    }
-}
-
-// Why the last file was not transcribed, or that one is already running; it stays until dismissed or the next file.
-private struct FileNoticeView: View {
-    let notice: FileJob.Notice
-    let onDismiss: () -> Void
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
-            VStack(alignment: .leading, spacing: Space.s2) {
-                switch notice {
-                case .failed(let fileName, let message):
-                    Text(fileName)
-                        .font(Typeface.smallStrong)
-                        .foregroundStyle(Color.ink2)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    FormError(message: message)
-                case .busy:
-                    Text(FileJob.busyMessage)
-                        .font(Typeface.small)
-                        .foregroundStyle(Color.ink2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Button(action: onDismiss) { Image(systemName: "xmark") }
-                .buttonStyle(.icon)
-                .accessibilityLabel("Dismiss")
-                .iconLabel("Dismiss")
-        }
-        .padding(EdgeInsets(top: Space.s4, leading: Space.s8, bottom: Space.s8, trailing: 0))
-        .accessibilityElement(children: .contain)
-        .onAppear { AccessibilityNotification.Announcement(spoken).post() }
-    }
-
-    private var spoken: String {
-        switch notice {
-        case .failed(let fileName, let message): "\(fileName): \(message)"
-        case .busy: FileJob.busyMessage
-        }
     }
 }

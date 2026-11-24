@@ -30,7 +30,15 @@ public final class DictationSession {
         return false
     }
 
-    public var isWaitingForModel: Bool { phase == .transcribing && isModelLoading }
+    // What the dictation does once its recording stops.
+    public var work: WorkState {
+        switch phase {
+        case .transcribing where isModelLoading: .waiting(.speechModel)
+        case .transcribing, .pasting: .working(.transcribing)
+        case .cleaning: .working(.cleaningUp)
+        case .idle, .recording: isDone ? .done : .idle
+        }
+    }
 
     // From the press until the dictation ends; history deletions leave this one alone.
     public var activeDictationID: UUID? { dictation?.id }
@@ -166,7 +174,7 @@ public final class DictationSession {
     }
 
     public func toggleFromMenu() {
-        if isWaitingForModel, let stopStep { return stopStep() }
+        if work == .waiting(.speechModel), let stopStep { return stopStep() }
         readTimingIfIdle()
         let time = now()
         perform(gesture.toggle(at: time), at: time, from: .menu)

@@ -9,16 +9,17 @@ import UniformTypeIdentifiers
 public final class FileJob {
     public struct Running: Equatable {
         public let id: UUID
-        public var fraction: Double
+        public var work = WorkState.working(.transcribing, progress: 0)
     }
 
     public enum Notice: Equatable {
-        case failed(fileName: String, message: String)
+        case failed(fileName: String, Problem)
         case busy
     }
 
     public static let fileTypes: [UTType] = [.audio, .movie]
     public static let busyMessage = "A file is already being transcribed. Wait for it, or cancel it first."
+    static let modelNotReady = Problem("file.model-not-ready", "The speech model is still loading. Try again when the menu says Ready.")
 
     public private(set) var running: Running?
     public private(set) var notice: Notice?
@@ -70,18 +71,18 @@ public final class FileJob {
         notice = nil
         let fileName = url.lastPathComponent
         guard Self.isSupported(url) else {
-            notice = .failed(fileName: fileName, message: AudioFileError.unreadable.problem.message)
+            notice = .failed(fileName: fileName, AudioFileError.unreadable.problem)
             return
         }
         guard isModelReady() else {
-            notice = .failed(fileName: fileName, message: "The speech model is still loading. Try again when the menu says Ready.")
+            notice = .failed(fileName: fileName, Self.modelNotReady)
             return
         }
         Log.event("file-job-start")
         let id = UUID()
         var entry = HistoryEntry(id: id, startedAt: now(), audioFile: HistoryEntry.audioFileName(for: id), outcome: .kept)
         entry.file = fileName
-        running = Running(id: id, fraction: 0)
+        running = Running(id: id)
         library.show(pending: entry)
         let steps = Mutex(FileTranscription.Steps())
         task = Task { [retranscription] in
@@ -97,7 +98,7 @@ public final class FileJob {
             } catch {
                 Log.failure("file-job", error: error)
                 let problem = error.problem(or: TranscriberError.transcriptionFailed.problem)
-                await finish(id, notice: .failed(fileName: fileName, message: problem.message), saved: false)
+                await finish(id, notice: .failed(fileName: fileName, problem), saved: false)
             }
         }
     }
@@ -129,6 +130,6 @@ public final class FileJob {
 
     private func report(_ fraction: Double, for id: UUID) {
         guard running?.id == id else { return }
-        running?.fraction = fraction
+        running?.work = .working(.transcribing, progress: fraction)
     }
 }

@@ -7,49 +7,49 @@ struct MeetingSteps: View {
     let page: MeetingPage
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: MeetingMetrics.timerTick)) { context in
-            Grid(alignment: .leading, horizontalSpacing: Space.s8, verticalSpacing: 0) {
-                ForEach(rows) { row in
-                    GridRow {
-                        symbol(row.look)
-                            .frame(width: MeetingWindowMetrics.stepSymbol)
-                        Text(row.name)
-                            .foregroundStyle(Color.ink2)
-                            .frame(width: MeetingWindowMetrics.stepName, alignment: .leading)
-                        status(row, now: context.date)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        if row.action != nil {
-                            Button("Try again") { Task { await page.tryAgain(row) } }
-                                .buttonStyle(.secondary)
-                        }
+        Grid(alignment: .leading, horizontalSpacing: Space.s8, verticalSpacing: 0) {
+            ForEach(rows) { row in
+                GridRow {
+                    symbol(row.work)
+                        .frame(width: MeetingWindowMetrics.stepSymbol)
+                    Text(row.name)
+                        .foregroundStyle(Color.ink2)
+                        .frame(width: MeetingWindowMetrics.stepName, alignment: .leading)
+                    status(row)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    // A step waiting for a model that is not downloading waits until asked again.
+                    if case .waiting = row.work, row.action == .download {
+                        Button("Try again") { tryAgain(row) }
+                            .buttonStyle(.secondary)
                     }
-                    .frame(minHeight: MeetingWindowMetrics.stepRow)
-                    .accessibilityElement(children: .combine)
                 }
+                .frame(minHeight: MeetingWindowMetrics.stepRow)
+                .accessibilityElement(children: .combine)
             }
         }
         .font(Typeface.small)
     }
 
-    @ViewBuilder private func symbol(_ look: MeetingPage.StepRow.Look) -> some View {
-        switch look {
-        case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.ink2)
+    @ViewBuilder private func symbol(_ work: WorkState) -> some View {
+        switch work {
+        case .done, .idle: Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.ink2)
         case .working: LoadingRadio(colour: .ink, size: Symbol.window, lineWidth: ControlMetrics.focusRing)
         case .waiting: Image(systemName: "circle.dashed").foregroundStyle(Color.muted)
         case .failed: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.errorInk)
         }
     }
 
-    private func status(_ row: MeetingPage.StepRow, now: Date) -> some View {
-        HStack(spacing: Space.s8) {
-            Text(row.text(at: now))
-                .foregroundStyle(row.look == .failed ? Color.errorInk : row.look == .working ? Color.ink : Color.muted)
-                .monospacedDigit()
-                .fixedSize(horizontal: false, vertical: true)
-            if let progress = row.progress {
-                ProgressBar(fraction: progress, width: MeetingWindowMetrics.stepBar.width, label: row.name, track: .meterTrack)
-            }
+    @ViewBuilder private func status(_ row: MeetingPage.StepRow) -> some View {
+        if let note = row.note {
+            Text(note).foregroundStyle(Color.muted)
+        } else {
+            let retry = row.action == nil ? nil : { tryAgain(row) }
+            WorkLine(state: row.work, bar: .beside(width: MeetingWindowMetrics.stepBar.width), track: .meterTrack, onRetry: retry)
         }
+    }
+
+    private func tryAgain(_ row: MeetingPage.StepRow) {
+        Task { await page.tryAgain(row) }
     }
 }
 
