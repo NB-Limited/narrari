@@ -183,8 +183,8 @@ public actor LocalModelEngine: CleanupEngine {
         let generation = loadGeneration
         let task = Task {
             defer { if loadGeneration == generation { loading = nil } }
-            // A model loaded before is on disk, and the clean-up waits for it within its time limit.
-            report(.preparing(fraction: wasLoaded ? 1 : 0))
+            // A model on disk only loads into memory, and the clean-up waits for it within its time limit.
+            report(.preparing(fraction: wasLoaded || hub.cachedModelIDs().contains(model.id) ? 1 : 0))
             let started = ContinuousClock.now
             do {
                 var configuration = LLMModelFactory.shared.configuration(id: model.id)

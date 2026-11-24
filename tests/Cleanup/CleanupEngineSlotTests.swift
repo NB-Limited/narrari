@@ -1,3 +1,4 @@
+import Foundation
 import NarrariKit
 import Testing
 
@@ -46,5 +47,27 @@ struct CleanupEngineSlotTests {
         #expect(engine.unloads.arrivals == 0)
         #expect(engine.loads.arrivals == 1)
         slot.release()
+    }
+
+    @Test func model_on_this_mac_loads_at_the_first_dictation_not_at_launch() async throws {
+        let model = folder.url.appending(path: "huggingface/models--" + ModelReference(CleanupSettings.localModel.defaultValue).id
+            .replacingOccurrences(of: "/", with: "--"), directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: model, withIntermediateDirectories: true)
+        let slot = CleanupEngineSlot(
+            settings: settings.store, keychain: FakeKeychain(), store: ModelStore(root: folder.url),
+            clock: clock, choose: { [engine] _ in engine }
+        )
+
+        slot.start()
+        let loadsAtLaunch = engine.loads.arrivals
+        slot.hold()
+        await engine.loads.waitForArrivals(1)
+        slot.release()
+        await clock.waitForSleepers(1)
+        clock.advance(by: idleLimit)
+        await engine.unloads.waitForArrivals(1)
+
+        #expect(loadsAtLaunch == 0)
+        #expect(slot.current != nil)
     }
 }
