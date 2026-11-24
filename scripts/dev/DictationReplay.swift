@@ -114,8 +114,10 @@ func loadAverage() -> Double {
 func dictationReplay(_ experiment: String, history: String, out: String, model: String?) async throws {
     if experiment == "text" {
         try await dictationReplayText(history: history, out: out, model: model)
-    } else {
+    } else if experiment == "ahead" {
         try await dictationReplayAhead(history: history, out: out)
+    } else {
+        try await dictationReplayPieces(history: history, out: out)
     }
 }
 
