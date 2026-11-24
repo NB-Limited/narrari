@@ -1,10 +1,13 @@
 import AVFoundation
 
 // Mono samples at a device's rate in, mono samples at the speech rate out, with buffers reused between calls.
+// It never logs, because it runs on the audio thread; the owner logs `failure` once it is off that thread.
 struct Resampler {
     private var converter: AVAudioConverter
     private var input: AVAudioPCMBuffer?
     private var output: AVAudioPCMBuffer?
+    private(set) var hasFailed = false
+    private(set) var failure: NSError?
 
     init?(from sampleRate: Double) {
         guard let converter = Self.converter(from: sampleRate) else { return nil }
@@ -15,7 +18,15 @@ struct Resampler {
         guard let converter = Self.converter(from: sampleRate) else { return false }
         self.converter = converter
         input = nil
+        output = nil
         return true
+    }
+
+    // Buffers for calls of up to `frames`, made now so the audio thread's first calls allocate none.
+    mutating func prepare(frames: Int) {
+        _ = input(frames: frames)
+        input?.frameLength = 0
+        output = AVAudioPCMBuffer(pcmFormat: converter.outputFormat, frameCapacity: outputCapacity(for: AVAudioFrameCount(frames)))
     }
 
     // Filled by the caller before convert(), so a device's samples never pass into state that a lock guards.
@@ -32,14 +43,21 @@ struct Resampler {
     // The result is reused by the next call.
     mutating func convert() -> AVAudioPCMBuffer? {
         guard let input, input.frameLength > 0 else { return nil }
-        let ratio = converter.outputFormat.sampleRate / converter.inputFormat.sampleRate
-        let capacity = AVAudioFrameCount((Double(input.frameLength) * ratio).rounded(.up)) + 32
+        let capacity = outputCapacity(for: input.frameLength)
         if (output?.frameCapacity ?? 0) < capacity {
             output = AVAudioPCMBuffer(pcmFormat: converter.outputFormat, frameCapacity: capacity)
         }
         defer { input.frameLength = 0 }
-        guard let output, Self.convert(input, with: converter, into: output), output.frameLength > 0 else { return nil }
-        return output
+        guard let output else { return nil }
+        guard Self.convert(input, with: converter, into: output, error: &failure) else {
+            hasFailed = true
+            return nil
+        }
+        return output.frameLength > 0 ? output : nil
+    }
+
+    private func outputCapacity(for frames: AVAudioFrameCount) -> AVAudioFrameCount {
+        AVAudioFrameCount((Double(frames) * converter.outputFormat.sampleRate / converter.inputFormat.sampleRate).rounded(.up)) + 32
     }
 
     static func mono(at sampleRate: Double) -> AVAudioFormat? {
@@ -51,9 +69,10 @@ struct Resampler {
         return AVAudioConverter(from: source, to: target)
     }
 
-    private static func convert(_ buffer: AVAudioPCMBuffer, with converter: AVAudioConverter, into output: AVAudioPCMBuffer) -> Bool {
+    private static func convert(
+        _ buffer: AVAudioPCMBuffer, with converter: AVAudioConverter, into output: AVAudioPCMBuffer, error: inout NSError?
+    ) -> Bool {
         var isSupplied = false
-        var error: NSError?
         let status = converter.convert(to: output, error: &error) { _, inputStatus in
             if isSupplied {
                 inputStatus.pointee = .noDataNow
@@ -63,10 +82,6 @@ struct Resampler {
             inputStatus.pointee = .haveData
             return buffer
         }
-        guard status != .error else {
-            Log.failure("audio-convert", error: error)
-            return false
-        }
-        return true
+        return status != .error
     }
 }

@@ -45,6 +45,7 @@ public final class TrackWriter {
     }
 
     public func retarget(to sourceRate: Double) throws {
+        logConvertFailure()
         resampler = try Self.resampler(from: sourceRate)
         self.sourceRate = sourceRate
         resampled = (0, 0)
@@ -90,7 +91,13 @@ public final class TrackWriter {
         flush()
         if let file { ExtAudioFileDispose(file) }
         file = nil
+        logConvertFailure()
         if hasFailed { throw TrackWriterError.writeFailed }
+    }
+
+    private func logConvertFailure() {
+        guard let resampler, resampler.hasFailed else { return }
+        Log.failure("meeting-track-convert", error: resampler.failure)
     }
 
     var length: Int { flushed + pending.count }
