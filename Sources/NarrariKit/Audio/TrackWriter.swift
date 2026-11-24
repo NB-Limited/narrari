@@ -1,9 +1,19 @@
 import AudioToolbox
 import AVFoundation
 
+public enum TrackWriterError: ProblemError, Equatable, CaseIterable {
+    case writeFailed
+
+    public var problem: Problem {
+        Problem("track.write-failed", "The audio could not be written to disk. Free some space, then try again.", canRetry: true)
+    }
+}
+
 // One meeting track on disk: 16 kHz mono 16-bit CAF. At most a second of audio waits in memory, so a crash loses at most that.
 // Used from one thread at a time.
 public final class TrackWriter {
+    public typealias Write = (ExtAudioFileRef, UInt32, UnsafePointer<AudioBufferList>) -> OSStatus
+
     private static let rate = SpeechAudio.sampleRate
     private static let flushSamples = Int(rate)
     // How far the track may run ahead of or behind the meeting's clock before samples are added or dropped.
@@ -18,10 +28,14 @@ public final class TrackWriter {
     private var pending: [Float] = []
     private var flushed = 0
     private(set) var corrected = 0
+    private let write: Write
+    // A write failed and the file was closed; the rest of the track counts as lost.
+    public private(set) var hasFailed = false
 
-    public init(writingTo url: URL, sourceRate: Double) throws {
+    public init(writingTo url: URL, sourceRate: Double, write: @escaping Write = { ExtAudioFileWrite($0, $1, $2) }) throws {
         pending.reserveCapacity(2 * Self.flushSamples)
         self.sourceRate = sourceRate
+        self.write = write
         resampler = try Self.resampler(from: sourceRate)
         file = try SpeechAudio.createKeptFile(at: url)
     }
@@ -63,8 +77,8 @@ public final class TrackWriter {
         Double(corrected) / Double(max(length, 1))
     }
 
-    // Pads or cuts the track to `duration` seconds and closes the file.
-    public func finish(at duration: Double) {
+    // Pads or cuts the track to `duration` seconds and closes the file; throws when part of it never reached the disk.
+    public func finish(at duration: Double) throws {
         let target = Int((duration * Self.rate).rounded())
         if length < target {
             addSilence(target - length)
@@ -76,6 +90,7 @@ public final class TrackWriter {
         flush()
         if let file { ExtAudioFileDispose(file) }
         file = nil
+        if hasFailed { throw TrackWriterError.writeFailed }
     }
 
     var length: Int { flushed + pending.count }
@@ -122,10 +137,12 @@ public final class TrackWriter {
                 mNumberBuffers: 1,
                 mBuffers: AudioBuffer(mNumberChannels: 1, mDataByteSize: UInt32(samples.count * 4), mData: samples.baseAddress)
             )
-            return ExtAudioFileWrite(file, UInt32(samples.count), &list)
+            return write(file, UInt32(samples.count), &list)
         }
         guard status != noErr else { return }
         Log.failure("meeting-track-write")
+        hasFailed = true
+        corrected += pending.count
         ExtAudioFileDispose(file)
         self.file = nil
     }

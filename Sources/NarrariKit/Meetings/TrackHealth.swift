@@ -6,6 +6,8 @@ public struct RecordingTrouble: Sendable, Equatable {
         case stopped
         // Sound comes, but much of it is padded or cut, or it comes at a rate other than the one reported.
         case poor
+        // Its file could not be written, so the rest of the track is lost.
+        case notWritten
     }
 
     public let track: TranscriptSegment.Track
@@ -22,6 +24,8 @@ public struct RecordingTrouble: Sendable, Equatable {
         case (.mic, .poor): "Your microphone is not recording well"
         case (.system, .stopped): "Other people's sound stopped recording"
         case (.system, .poor): "Other people's sound is not recording well"
+        case (.mic, .notWritten): "Your microphone can't be saved to disk"
+        case (.system, .notWritten): "Other people's sound can't be saved to disk"
         }
     }
 }

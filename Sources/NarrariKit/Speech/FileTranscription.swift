@@ -57,7 +57,7 @@ public struct FileTranscription: Sendable {
                 heard.seconds = piece.end
                 share(1)
             }
-            keeper?.finish(at: heard.seconds)
+            try keeper?.finish(at: heard.seconds)
             await model.unload()
             return heard.transcript
         } catch {

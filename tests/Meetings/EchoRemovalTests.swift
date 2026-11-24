@@ -62,7 +62,7 @@ struct EchoRemovalTests {
     private func write(_ samples: [Float], to url: URL) throws {
         let writer = try TrackWriter(writingTo: url, sourceRate: Self.rate)
         samples.withUnsafeBufferPointer { writer.append($0, at: 0) }
-        writer.finish(at: Self.seconds)
+        try writer.finish(at: Self.seconds)
     }
 
     @Test func the_far_side_heard_by_the_microphone_is_removed_into_a_cleaned_track_and_mic_caf_stays_as_recorded() async throws {

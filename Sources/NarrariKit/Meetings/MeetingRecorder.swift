@@ -202,7 +202,7 @@ public final class MeetingRecorder: MeetingPresence {
             Log.event(side == .microphone ? "meeting-microphone-rebuilt" : "meeting-system-rebuilt")
             reconnect(side)
         }
-        let first = troubles.first { $0.kind == .stopped } ?? troubles.first
+        let first = troubles.first { $0.kind == .notWritten } ?? troubles.first { $0.kind == .stopped } ?? troubles.first
         guard first != told else { return }
         told = first
         if let first { Log.event(first.logName) }
@@ -248,6 +248,8 @@ extension RecordingTrouble {
         case (.mic, .poor): "meeting-microphone-told-poor"
         case (.system, .stopped): "meeting-system-told-stopped"
         case (.system, .poor): "meeting-system-told-poor"
+        case (.mic, .notWritten): "meeting-microphone-told-not-written"
+        case (.system, .notWritten): "meeting-system-told-not-written"
         }
     }
 }
@@ -317,13 +319,15 @@ private final class Capture: @unchecked Sendable {
             if health[side]?.check(at: now, length: writer.length, corrected: writer.corrected) == true { repairs.append(side) }
         }
         let troubles = [Track.Side.microphone, .system].compactMap { side in
-            health[side]?.trouble.map { RecordingTrouble(track: side.segmentTrack, kind: $0) }
+            let kind = track(side).writer.hasFailed ? .notWritten : health[side]?.trouble
+            return kind.map { RecordingTrouble(track: side.segmentTrack, kind: $0) }
         }
         return (repairs, troubles)
     }
 
+    // A track that failed to write was logged then; its unwritten part counts as lost.
     func finish(at duration: Double) -> MeetingRecording {
-        [microphone, system].forEach { $0.writer.finish(at: duration) }
+        [microphone, system].forEach { try? $0.writer.finish(at: duration) }
         let lost = (microphone: microphone.writer.correctedShare, system: system.writer.correctedShare)
         Log.count("meeting-microphone-corrected-percent", Int((100 * lost.microphone).rounded()))
         Log.count("meeting-system-corrected-percent", Int((100 * lost.system).rounded()))
@@ -399,7 +403,7 @@ private final class Track: @unchecked Sendable {
     }
 
     func discard() {
-        writer.finish(at: 0)
+        try? writer.finish(at: 0)
         try? FileManager.default.removeItem(at: url)
     }
 }

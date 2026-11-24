@@ -22,7 +22,7 @@ struct TrackWriterTests {
         let writer = try TrackWriter(writingTo: url, sourceRate: rate)
 
         write(seconds: 3, at: rate, to: writer)
-        writer.finish(at: 3)
+        try writer.finish(at: 3)
 
         let file = try AVAudioFile(forReading: url)
         let format = file.fileFormat.streamDescription.pointee
@@ -36,6 +36,16 @@ struct TrackWriterTests {
         let samples = UnsafeBufferPointer(start: try #require(buffer.floatChannelData?[0]), count: Int(buffer.frameLength))
         let crossings = zip(samples, samples.dropFirst()).filter { ($0 < 0) != ($1 < 0) }.count
         #expect(abs(Double(crossings) / 2 / 3 - 440) < 5)
+    }
+
+    @Test func a_write_the_disk_refuses_fails_the_track_and_the_rest_of_it_counts_as_lost() throws {
+        let writer = try TrackWriter(writingTo: folder.url.appending(path: "mic.caf"), sourceRate: 16_000) { _, _, _ in kAudioFileUnspecifiedError }
+
+        write(seconds: 3, at: 16_000, to: writer)
+
+        #expect(writer.hasFailed)
+        #expect(throws: TrackWriterError.writeFailed) { try writer.finish(at: 3) }
+        #expect(writer.correctedShare == 1)
     }
 
     @Test func a_track_never_closed_still_opens_and_has_all_but_its_last_two_seconds() throws {
@@ -60,7 +70,7 @@ struct TrackWriterTests {
                 [honest, mislabelled].forEach { $0.append(samples, at: Double(index) * 0.02) }
             }
         }
-        [honest, mislabelled].forEach { $0.finish(at: 10) }
+        try [honest, mislabelled].forEach { try $0.finish(at: 10) }
 
         #expect(honest.correctedShare < 0.01)
         #expect(abs(mislabelled.correctedShare - 2.0 / 3) < 0.02)
