@@ -1,0 +1,18 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:recommended", "schedule:weekly", "helpers:pinGitHubActionDigests"],
+	"minimumReleaseAge": "3 days",
+	"osvVulnerabilityAlerts": true,
+	"packageRules": [
+		{
+			"description": "The speech and model libraries decide what a recording or a dictation turns into: an update waits for the recording rig and the benchmarks, approved on the Dependency Dashboard.",
+			"matchManagers": ["swift"],
+			"groupName": "Swift packages",
+			"dependencyDashboardApproval": true
+		},
+		{
+			"matchManagers": ["github-actions"],
+			"groupName": "GitHub Actions"
+		}
+	]
+}

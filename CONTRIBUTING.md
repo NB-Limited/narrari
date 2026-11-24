@@ -10,7 +10,8 @@ Email hello@nb-limited.com. For a bug, say what you did, what you expected and w
 
 ## Invited contributors
 
-- One problem per pull request.
+- An issue is a bug or an idea, one per issue; the forms ask for what is needed.
+- One problem per pull request, linked to its issue.
 - Say how you checked it.
 - `bash scripts/ci.sh` passes.
 - Read `AGENTS.md` first; its rules apply to every change.
