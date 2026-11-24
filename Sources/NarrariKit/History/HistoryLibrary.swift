@@ -4,14 +4,25 @@ import Observation
 @MainActor
 @Observable
 public final class HistoryLibrary {
+    public struct EntryWork: Sendable, Equatable {
+        public let state: WorkState
+        public let choice: CleanupChoice?
+
+        public var label: String {
+            guard let choice, state.activity != nil else { return state.label }
+            return choice.runningLabel
+        }
+    }
+
+    public nonisolated static let readFailed = Problem("history.unreadable", "The dictations could not be read. Try again.", canRetry: true)
+
     public private(set) var entries: [HistoryEntry] = [] {
         didSet { searchResults() }
     }
     public private(set) var skippedLines = 0
-    public private(set) var hasLoaded = false
-    public private(set) var retranscribing: Set<UUID> = []
-    public private(set) var cleaningUp: [UUID: CleanupChoice] = [:]
-    public private(set) var errors: [UUID: String] = [:]
+    // Loading until the first read ends, then idle, or failed while the history cannot be read.
+    public private(set) var load = WorkState.working(.loading)
+    public private(set) var work: [UUID: EntryWork] = [:]
     public var searchText = "" {
         didSet { if searchText != oldValue { searchResults() } }
     }
@@ -69,10 +80,11 @@ public final class HistoryLibrary {
             let read = try await store.entries()
             entries = read.entries.filter(\.isFinished)
             skippedLines = read.skipped
+            load = .idle
         } catch {
             Log.failure("history-read", error: error)
+            load = .failed(error.problem(or: Self.readFailed))
         }
-        hasLoaded = true
         keepSelectionInResults()
     }
 
@@ -93,7 +105,7 @@ public final class HistoryLibrary {
 
     // Transcribed or cleaned up again: one at a time, so neither result overwrites the other.
     public func isBusy(_ entry: HistoryEntry) -> Bool {
-        retranscribing.contains(entry.id) || cleaningUp[entry.id] != nil
+        work[entry.id]?.state.activity != nil
     }
 
     // Not while it is worked on again, whose result would land on a deleted entry, nor while it is still recording.
@@ -119,14 +131,13 @@ public final class HistoryLibrary {
 
     public func retranscribe(_ entry: HistoryEntry) async {
         guard !isBusy(entry) else { return }
-        retranscribing.insert(entry.id)
-        errors[entry.id] = nil
-        defer { retranscribing.remove(entry.id) }
+        work[entry.id] = EntryWork(state: .working(.transcribing), choice: nil)
         do {
             _ = try await retranscription.run(entry)
+            work[entry.id] = nil
         } catch {
             Log.failure("history-retranscribe", error: error)
-            errors[entry.id] = error.problem(or: TranscriberError.transcriptionFailed.problem).message
+            work[entry.id] = EntryWork(state: .failed(error.problem(or: TranscriberError.transcriptionFailed.problem)), choice: nil)
         }
         await refresh()
     }
@@ -135,22 +146,22 @@ public final class HistoryLibrary {
         retranscription.prompts().map(CleanupChoice.init) + [.asSpoken]
     }
 
-    // True once the new text is saved; false when it failed, the reason in errors, or another run was going.
+    // True once the new text is saved; false when it failed, the problem in work, or another run was going.
     @discardableResult
     public func cleanUp(_ entry: HistoryEntry, with choice: CleanupChoice) async -> Bool {
         guard !isBusy(entry), !entry.rawText.isEmpty else { return false }
-        cleaningUp[entry.id] = choice
-        errors[entry.id] = nil
-        defer { cleaningUp[entry.id] = nil }
+        work[entry.id] = EntryWork(state: .working(.cleaningUp), choice: choice)
         Log.event("cleanup-again")
         let isSaved: Bool
         do {
             _ = try await retranscription.cleanUp(entry, with: choice)
             Log.event("cleanup-again-done")
+            work[entry.id] = nil
             isSaved = true
         } catch {
             Log.failure("cleanup-again-failed", error: error)
-            errors[entry.id] = error.problem(or: RetranscriptionError.cleanupNotRun(.engineFailed).problem).message
+            let problem = error.problem(or: RetranscriptionError.cleanupNotRun(.engineFailed).problem)
+            work[entry.id] = EntryWork(state: .failed(problem), choice: choice)
             isSaved = false
         }
         await refresh()

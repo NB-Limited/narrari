@@ -40,13 +40,16 @@ struct MeetingsSidebar: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
+                    if library.load != .idle, library.load.problem != nil || library.entries.isEmpty {
+                        ListLoad(state: library.load) { Task { await library.refresh() } }
+                    }
                     if let hits = library.hits {
                         Text(hits.isEmpty ? "No meetings match" : hits.count == 1 ? "1 meeting" : "\(hits.count) meetings")
                             .font(Typeface.small)
                             .foregroundStyle(Color.muted)
                             .padding(EdgeInsets(top: Space.s4, leading: Space.s8, bottom: Space.s10, trailing: Space.s8))
                         rows(library.visible)
-                    } else if library.hasLoaded, library.entries.isEmpty {
+                    } else if library.load == .idle, library.entries.isEmpty {
                         Text("No meetings yet")
                             .font(Typeface.small)
                             .foregroundStyle(Color.muted)
@@ -207,14 +210,15 @@ private struct StateLine: View {
                     Label(session.state == .paused ? "Paused, \(time)" : "Recording, \(time)", systemImage: "record.circle")
                 }
             case .work(let work) where work == .working(.importing): Label(work.label, systemImage: "square.and.arrow.down")
+            case .work(let work) where work.problem != nil:
+                Label(work.brief, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Color.errorInk)
             case .work(let work):
                 Label {
                     Text(work.label)
                 } icon: {
                     switch work {
                     case .working: LoadingRadio(colour: .ink2, size: Symbol.note, lineWidth: ControlMetrics.focusRing)
-                    case .failed: Image(systemName: "exclamationmark.circle")
-                    case .idle, .waiting, .done: Image(systemName: "hourglass")
+                    case .idle, .waiting, .done, .failed: Image(systemName: "hourglass")
                     }
                 }
             }

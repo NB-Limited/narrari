@@ -53,7 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let sounds: Sounds
     private let motion = ReduceMotion.shared
     private let meeting: MeetingSession
-    private lazy var meetingLibrary = MeetingLibrary(store: meetings, processor: meetingProcessing, models: meetingModels, settings: .shared) { [meeting] in
+    private lazy var meetingLibrary = MeetingLibrary(
+        store: meetings, processor: meetingProcessing, models: meetingModels, progress: transcriptProgress, settings: .shared
+    ) { [meeting] in
         meeting.recordingID
     }
     private let meetingProcessing: MeetingProcessing

@@ -49,7 +49,7 @@ struct ReaderToolbar: View {
             names: .transcribe,
             isRunning: isWorking, unavailable: isCleaning ? Self.waitForCleanup : hasAudio ? nil : Self.noAudio,
             hint: hasAudio ? "Replaces the text with a new transcription of the audio" : Self.noAudio,
-            hasLanded: { library.errors[entry.id] == nil },
+            hasLanded: { library.work[entry.id]?.state.problem == nil },
             action: { _ in Task { await library.retranscribe(entry) } }
         )
     }

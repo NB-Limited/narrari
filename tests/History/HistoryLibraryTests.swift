@@ -103,7 +103,7 @@ struct HistoryLibraryTests {
         clock.advance(by: CleanupService.localTimeLimit(characters: heard.count, isReloading: false))
 
         #expect(await isSaved == false)
-        #expect(library.errors[entry.id] == "Clean-up took too long. The text is unchanged.")
+        #expect(library.work[entry.id]?.state.label == "Clean-up took too long. The text is unchanged.")
         #expect(library.entries.first?.finalText == shown)
         stuck.open()
     }
@@ -118,7 +118,7 @@ struct HistoryLibraryTests {
         #expect(await library.cleanUp(entry, with: CleanupChoice(prompt: .email)) == false)
 
         #expect(engine.calls.isEmpty)
-        #expect(library.errors[entry.id] == "Clean-up is off. The text is unchanged.")
+        #expect(library.work[entry.id]?.state.label == "Clean-up is off. The text is unchanged.")
         #expect(!settings.store.value(CleanupSettings.isEnabled))
     }
 
@@ -157,5 +157,19 @@ struct HistoryLibraryTests {
         #expect(found == [first.id])
         #expect(none.isEmpty)
         #expect(Set(library.results.map(\.id)) == [first.id, second.id])
+    }
+
+    @Test func the_list_is_loading_until_its_first_read_and_an_unreadable_history_is_not_empty() async throws {
+        let blocked = folder.url.appending(path: "History")
+        try Data().write(to: blocked)
+        let unreadable = library(store: HistoryStore(root: blocked))
+        let empty = library(store: HistoryStore(root: folder.url.appending(path: "Empty")))
+        #expect(empty.load == .working(.loading))
+
+        await unreadable.refresh()
+        await empty.refresh()
+
+        #expect(unreadable.load == .failed(HistoryLibrary.readFailed))
+        #expect(empty.load == .idle && empty.entries.isEmpty)
     }
 }

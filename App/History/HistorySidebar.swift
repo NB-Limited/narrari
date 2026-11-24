@@ -42,7 +42,9 @@ struct HistorySidebar: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    if library.hasLoaded, library.results.isEmpty {
+                    if library.load != .idle, library.load.problem != nil || library.results.isEmpty {
+                        ListLoad(state: library.load) { Task { await library.refresh() } }
+                    } else if library.results.isEmpty {
                         Text(library.entries.isEmpty ? "No dictations yet" : "No dictations match")
                             .font(Typeface.small)
                             .foregroundStyle(Color.muted)

@@ -11,11 +11,12 @@ struct ReaderPage: View {
 
     var body: some View {
         let hasAudio = library.hasAudio(entry)
-        let isWorking = library.retranscribing.contains(entry.id)
+        let work = library.work[entry.id]
+        let isWorking = work?.state.activity == .transcribing
         VStack(spacing: 0) {
             ReaderToolbar(
                 entry: entry, library: library, playback: playback, hasAudio: hasAudio, isWorking: isWorking,
-                isCleaning: library.cleaningUp[entry.id] != nil
+                isCleaning: work?.state.activity == .cleaningUp
             )
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -23,7 +24,7 @@ struct ReaderPage: View {
                         WhenText(entry: entry)
                         Text(EntryFormat.length(entry))
                     }
-                    notes(isWorking: isWorking)
+                    notes(work: work)
                     if entry.needsTranscription, hasAudio {
                         Button("Transcribe") { Task { await library.retranscribe(entry) } }
                             .buttonStyle(.primary)
@@ -59,15 +60,15 @@ struct ReaderPage: View {
     }
 
     // Only what needs attention stays above the text; a clean-up turned off on purpose is told in the details.
-    @ViewBuilder private func notes(isWorking: Bool) -> some View {
+    @ViewBuilder private func notes(work: HistoryLibrary.EntryWork?) -> some View {
+        let running = work.flatMap { work in work.state.activity.map { ($0 == .cleaningUp ? "text.alignleft" : "waveform", work.label) } }
         let lines: [(symbol: String, text: String)] = [
             entry.outcomeNote.map { ("exclamationmark.circle", $0) },
             entry.isCleanupSkipped ? entry.cleanupNote.map { ("exclamationmark.circle", $0) } : nil,
             entry.speechFallbackNote.map { ("network.slash", $0) },
-            isWorking ? ("waveform", WorkState.Activity.transcribing.label) : nil,
-            library.cleaningUp[entry.id].map { ("text.alignleft", $0.runningLabel) }
+            running
         ].compactMap { $0 }
-        if !lines.isEmpty || library.errors[entry.id] != nil {
+        if !lines.isEmpty || work?.state.problem != nil {
             VStack(alignment: .leading, spacing: Space.s4) {
                 ForEach(lines, id: \.text) { line in
                     Label(line.text, systemImage: line.symbol)
@@ -75,8 +76,8 @@ struct ReaderPage: View {
                         .font(Typeface.small)
                         .foregroundStyle(Color.ink2)
                 }
-                if let error = library.errors[entry.id] {
-                    FormError(message: error)
+                if let problem = work?.state.problem {
+                    FormError(message: problem.message)
                 }
             }
             .padding(.top, Space.s8)

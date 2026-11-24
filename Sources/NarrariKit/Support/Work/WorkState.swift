@@ -12,6 +12,8 @@ public enum WorkState: Sendable, Equatable {
         case downloading
         // Opening a model already on this Mac.
         case gettingReady
+        // Reading a list from this Mac for the first time.
+        case loading
 
         public var label: String {
             switch self {
@@ -23,6 +25,7 @@ public enum WorkState: Sendable, Equatable {
             case .importing: "Importing"
             case .downloading: "Downloading"
             case .gettingReady: "Getting ready"
+            case .loading: "Loading"
             }
         }
     }
@@ -43,6 +46,12 @@ public enum WorkState: Sendable, Equatable {
         case .failed(let problem): problem.message
         case .done: "Done"
         }
+    }
+
+    // For a line too narrow for a problem's message, such as a list row; the message stays where the work is opened.
+    public var brief: String {
+        if case .failed = self { return "Failed" }
+        return label
     }
 
     // "Finding speakers, 0:40" while it runs; a share of the work, once known, reads in place of the time.

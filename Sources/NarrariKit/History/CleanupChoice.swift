@@ -12,7 +12,7 @@ public struct CleanupChoice: Sendable, Equatable {
 
     public var title: String { prompt?.name ?? "As spoken" }
 
-    public var runningLabel: String { prompt.map { "Cleaning up with \($0.name)" } ?? "Showing as spoken" }
+    public var runningLabel: String { prompt.map { "\(WorkState.Activity.cleaningUp.label) with \($0.name)" } ?? "Showing as spoken" }
 
     public var doneLabel: String { prompt.map { "Cleaned up with \($0.name)" } ?? "Shown as spoken" }
 

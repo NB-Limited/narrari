@@ -53,8 +53,13 @@ public final class MeetingLibrary {
         case work(WorkState)
     }
 
-    public private(set) var entries: [Entry] = []
-    public private(set) var hasLoaded = false
+    public private(set) var entries: [Entry] = [] {
+        didSet { noteLanded(after: oldValue) }
+    }
+    // Meetings whose processing or import ended with nothing failed, oldest first; only ever grows, so no end is missed.
+    public private(set) var landed: [UUID] = []
+    // Loading until the first read ends, then idle, or failed while the meetings cannot be read.
+    public private(set) var load = WorkState.working(.loading)
     // Search results with where each hit; nil while the field is empty.
     public private(set) var hits: [MeetingSearch.Hit]?
     public private(set) var closedFolders: Set<String> = []
@@ -70,17 +75,19 @@ public final class MeetingLibrary {
     @ObservationIgnored public let store: MeetingStore
     @ObservationIgnored private let processor: any MeetingProcessor
     @ObservationIgnored private let models: MeetingModels
+    @ObservationIgnored private let progress: MeetingTranscript.Progress
     @ObservationIgnored private let settings: SettingsStore
     @ObservationIgnored private let recording: @MainActor () -> UUID?
     @ObservationIgnored private let now: () -> Date
 
     public init(
-        store: MeetingStore, processor: any MeetingProcessor, models: MeetingModels, settings: SettingsStore,
-        recording: @escaping @MainActor () -> UUID?, now: @escaping () -> Date = Date.init
+        store: MeetingStore, processor: any MeetingProcessor, models: MeetingModels, progress: MeetingTranscript.Progress,
+        settings: SettingsStore, recording: @escaping @MainActor () -> UUID?, now: @escaping () -> Date = Date.init
     ) {
         self.store = store
         self.processor = processor
         self.models = models
+        self.progress = progress
         self.settings = settings
         self.recording = recording
         self.now = now
@@ -129,10 +136,14 @@ public final class MeetingLibrary {
         if meeting.id == recording() { return .recording }
         if meeting.state == .importing { return .work(.working(.importing)) }
         let steps = MeetingProcessing.Step.allCases.map { ($0, meeting.steps[$0]) }
-        if let running = steps.first(where: { $0.1.status == .running }) { return .work(.working(MeetingPage.activity(running.0))) }
+        if let (step, running) = steps.first(where: { $0.1.status == .running }) {
+            let fraction = step == .transcript ? progress.fractions[meeting.id] : nil
+            return .work(.working(MeetingPage.activity(step), progress: fraction, since: running.since))
+        }
         if let failed = steps.first(where: { $0.1.status == .failed }) { return .work(.failed(failed.0.problem(failed.1.problem))) }
-        let needed = steps.filter { $0.1.status == .waiting }.flatMap { $0.1.waiting?.models ?? [] }
-        if needed.contains(where: { if case .downloading = models.status(of: $0) { true } else { false } }) { return .work(.working(.downloading)) }
+        let needed = steps.filter { $0.1.status == .waiting }.flatMap { $0.1.waiting?.models ?? [] }.map(models.status(of:))
+        if let failed = needed.lazy.compactMap({ if case .failed(let problem) = $0 { problem } else { nil } }).first { return .work(.failed(failed)) }
+        if needed.contains(where: { if case .downloading = $0 { true } else { false } }) { return .work(.working(.downloading)) }
         guard meeting.state != .recording, steps.contains(where: { $0.1.status != .done }) else { return nil }
         return .work(.waiting(steps.lazy.compactMap { $0.1.status == .waiting ? $0.1.waiting : nil }.first ?? .turn))
     }
@@ -141,10 +152,11 @@ public final class MeetingLibrary {
         do {
             let listed = try await store.list()
             entries = listed.meetings.map { .meeting($0.meeting, folder: $0.folder) } + listed.unreadable.map(Entry.unreadable)
+            load = .idle
         } catch {
             Log.failure("meetings-read", error: error)
+            load = .failed(error.problem(or: Self.readFailed))
         }
-        hasLoaded = true
         if hits != nil { await search() }
         keepSelection()
     }
@@ -304,9 +316,23 @@ public final class MeetingLibrary {
         }
     }
 
+    private func noteLanded(after old: [Entry]) {
+        let wasBusy = Set(old.compactMap(busyID))
+        landed += entries.compactMap { entry in
+            guard case .meeting(let meeting, _) = entry, wasBusy.contains(meeting.id), state(of: meeting) == nil else { return nil }
+            return meeting.id
+        }
+    }
+
+    private func busyID(_ entry: Entry) -> UUID? {
+        guard case .meeting(let meeting, _) = entry, case .work(let work)? = state(of: meeting), work.problem == nil else { return nil }
+        return meeting.id
+    }
+
     private static func newestFirst(_ first: Entry, _ second: Entry) -> Bool {
         first.date > second.date
     }
 
+    public nonisolated static let readFailed = Problem("meetings.unreadable", "The meetings could not be read. Try again.", canRetry: true)
     static let importFailed = Problem("meeting.import-failed", "The recording could not be imported. Try again.", canRetry: true)
 }
