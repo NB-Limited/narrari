@@ -85,7 +85,7 @@ public struct ModelRow: Sendable, Equatable {
         work.activity == .downloading ? work.progress ?? 0 : nil
     }
 
-    public var failure: String? { work.problem?.message }
+    public var failure: String? { work.problem?.besideRetry }
 }
 
 // Models on this Mac first, then those to download, then files the catalogue no longer lists.

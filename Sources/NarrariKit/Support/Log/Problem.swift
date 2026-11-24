@@ -11,6 +11,15 @@ public struct Problem: Sendable, Hashable {
         self.message = message
         self.canRetry = canRetry
     }
+
+    // Beside its own Try again button the message leaves out the words that say the same; elsewhere it stays whole.
+    public var besideRetry: String {
+        guard canRetry else { return message }
+        for (ending, rest) in [(" Try again.", ""), (", then try again.", "."), (" and try again.", ".")] where message.hasSuffix(ending) {
+            return message.dropLast(ending.count) + rest
+        }
+        return message
+    }
 }
 
 public protocol ProblemError: Error {

@@ -125,7 +125,7 @@ private struct MeetingModelRow: View {
                     }
                 }
                 if let problem = status.work.problem {
-                    FormError(message: problem.message).padding(.top, ControlMetrics.errorGap)
+                    FormError(message: problem.besideRetry).padding(.top, ControlMetrics.errorGap)
                 } else if let fraction = status.work.progress {
                     ProgressBar(fraction: fraction, label: "Downloading \(name)", track: .meterTrack)
                         .padding(.top, SettingsGrid.progressTop)

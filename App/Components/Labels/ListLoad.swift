@@ -9,7 +9,7 @@ struct ListLoad: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s8) {
             if let problem = state.problem {
-                FormError(message: problem.message)
+                FormError(message: problem.besideRetry)
                 if problem.canRetry {
                     Button("Try again", action: onRetry).buttonStyle(.secondary)
                 }
