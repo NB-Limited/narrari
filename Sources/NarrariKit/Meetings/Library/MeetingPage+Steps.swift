@@ -104,18 +104,17 @@ extension MeetingPage {
     private func modelRow(_ step: MeetingProcessing.Step, _ reason: WaitReason) -> StepRow {
         let needed = reason.models
         let statuses = needed.map(models.status(of:))
-        let failure = statuses.lazy.compactMap { status -> Problem? in if case .failed(let problem) = status { problem } else { nil } }.first
-        if let failure { return StepRow(step, .failed(failure), action: .download) }
+        if let failure = statuses.lazy.compactMap(\.work.problem).first { return StepRow(step, .failed(failure), action: .download) }
         let sizes = needed.map(models.size(of:))
         let total = Double(sizes.reduce(0, +))
         let landed = zip(sizes, statuses).reduce(0.0) { sum, pair in
             switch pair.1 {
             case .onThisMac: sum + Double(pair.0)
-            case .downloading(let fraction): sum + Double(pair.0) * fraction
-            case .notDownloaded, .failed: sum
+            case .work(let work): sum + Double(pair.0) * (work.progress ?? 0)
+            case .notDownloaded: sum
             }
         }
-        guard statuses.contains(where: { if case .downloading = $0 { true } else { false } }), total > 0 else {
+        guard statuses.contains(where: { $0.work.activity == .downloading }), total > 0 else {
             let size = total > 0 ? ", \(MetricText.bytes(Int64(total)))" : ""
             return StepRow(step, .waiting(reason), action: .download, note: reason.label + size)
         }

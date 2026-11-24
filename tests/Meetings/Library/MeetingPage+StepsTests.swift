@@ -99,11 +99,11 @@ struct MeetingPageStepsTests {
         }, fetch: fetch)
 
         library.begin([.speakerSplit])
-        await until { library.status(of: .speakerSplit) == .downloading(0.5) }
+        await until { library.status(of: .speakerSplit) == .work(.working(.downloading, progress: 0.5)) }
         let downloading = try #require(page.steps?.first { $0.id == .speakers })
         fetch.isFailing.withLock { $0 = true }
         fetch.gate.open()
-        await until { if case .failed = library.status(of: .speakerSplit) { true } else { false } }
+        await until { library.status(of: .speakerSplit).work.problem != nil }
         let failed = try #require(page.steps?.first { $0.id == .speakers })
 
         #expect(downloading.text(at: .now) == "Downloading, 50%" && downloading.work.progress == 0.5 && downloading.action == nil)

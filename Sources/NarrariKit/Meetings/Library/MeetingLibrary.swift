@@ -144,8 +144,8 @@ public final class MeetingLibrary {
         }
         if let failed = steps.first(where: { $0.1.status == .failed }) { return .work(.failed(failed.0.problem(failed.1.problem))) }
         let needed = steps.filter { $0.1.status == .waiting }.flatMap { $0.1.waiting?.models ?? [] }.map(models.status(of:))
-        if let failed = needed.lazy.compactMap({ if case .failed(let problem) = $0 { problem } else { nil } }).first { return .work(.failed(failed)) }
-        if needed.contains(where: { if case .downloading = $0 { true } else { false } }) { return .work(.working(.downloading)) }
+        if let failed = needed.lazy.compactMap(\.work.problem).first { return .work(.failed(failed)) }
+        if needed.contains(where: { $0.work.activity == .downloading }) { return .work(.working(.downloading)) }
         guard meeting.state != .recording, steps.contains(where: { $0.1.status != .done }) else { return nil }
         return .work(.waiting(steps.lazy.compactMap { $0.1.status == .waiting ? $0.1.waiting : nil }.first ?? .turn))
     }
