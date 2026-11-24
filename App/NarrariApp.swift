@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuPanel: MenuPanelController?
 
     override init() {
-        let permissions = Permissions(settings: .shared)
+        let permissions = Permissions.onThisMac(settings: .shared)
         let hotkeys = HotkeyMonitor(settings: .shared, permissions: permissions)
         let speechStatus = ModelStatus()
         let vocabulary = Vocabulary(store: .shared, settings: .shared, onStateChange: vocabularyStatus.report)

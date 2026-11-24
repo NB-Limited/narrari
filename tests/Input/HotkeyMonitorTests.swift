@@ -16,7 +16,7 @@ struct HotkeyMonitorTests {
     }
 
     @Test func hotkeys_stay_suspended_until_the_last_suspension_is_gone() {
-        let permissions = Permissions(settings: settings.store, access: .fixed(), microphoneStatus: { .authorized })
+        let permissions = Permissions.fixed(settings: settings.store)
         let monitor = HotkeyMonitor(settings: settings.store, permissions: permissions)
         let first = monitor.suspend()
         var second: HotkeySuspension? = monitor.suspend()

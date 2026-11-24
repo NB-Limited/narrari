@@ -12,7 +12,7 @@ Native macOS menu bar app for dictation and meeting notes. Swift 6, SwiftUI, App
 - All logic lives in `Sources/NarrariKit/`, one folder per concern. `App/` holds views and wiring only.
 - Every setting and its default lives in `Sources/NarrariKit/Settings/`.
 - Tests live in `tests/`, mirroring `Sources/NarrariKit/`. Mock only at system boundaries.
-- Stores are passed in, never defaulted to `.shared`. `App/NarrariApp.swift` is the one place that picks the real ones, so no test can reach real data.
+- Stores and permission reads are passed in, never defaulted to `.shared` or the system. `App/NarrariApp.swift` is the one place that picks the real ones, so no test can reach real data or ask the system on the main thread.
 - A standard a script can check goes into `scripts/check.sh`, with a bad sample in `scripts/check-rules.sh`. No exception lists and no disable comments: fix the hit.
 - UI work: read `DESIGN.md` first; it is the design system.
 

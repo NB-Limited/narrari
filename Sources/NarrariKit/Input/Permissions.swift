@@ -77,18 +77,29 @@ public final class Permissions {
 
     public var isComplete: Bool { microphone == .allowed && isAccessibilityAllowed }
 
+    // What this Mac grants. Only the app builds it, because each read asks the system on the main thread.
+    public static func onThisMac(settings: SettingsStore) -> Permissions {
+        Permissions(
+            settings: settings,
+            access: .system,
+            microphoneStatus: { AVCaptureDevice.authorizationStatus(for: .audio) },
+            calendarStatus: { EKEventStore.authorizationStatus(for: .event) },
+            askForCalendar: {
+                do {
+                    _ = try await EKEventStore().requestFullAccessToEvents()
+                } catch {
+                    Log.failure("calendar-request", error: error)
+                }
+            }
+        )
+    }
+
     public init(
         settings: SettingsStore,
-        access: InputAccess = .system,
-        microphoneStatus: @escaping @Sendable () -> AVAuthorizationStatus = { AVCaptureDevice.authorizationStatus(for: .audio) },
-        calendarStatus: @escaping @Sendable () -> EKAuthorizationStatus = { EKEventStore.authorizationStatus(for: .event) },
-        askForCalendar: @escaping @Sendable () async -> Void = {
-            do {
-                _ = try await EKEventStore().requestFullAccessToEvents()
-            } catch {
-                Log.failure("calendar-request", error: error)
-            }
-        },
+        access: InputAccess,
+        microphoneStatus: @escaping @Sendable () -> AVAuthorizationStatus,
+        calendarStatus: @escaping @Sendable () -> EKAuthorizationStatus,
+        askForCalendar: @escaping @Sendable () async -> Void,
         clock: any Clock<Duration> = ContinuousClock()
     ) {
         self.settings = settings

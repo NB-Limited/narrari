@@ -51,7 +51,7 @@ struct MeetingSessionTests {
 
     init() {
         store = MeetingStore(root: folder.url, trash: { try FileManager.default.removeItem(at: $0) })
-        permissions = Permissions(settings: settings.store, access: .fixed(), microphoneStatus: { .authorized })
+        permissions = Permissions.fixed(settings: settings.store)
         let now = Date.now
         let event = CalendarEvent(
             title: "Weekly sync", start: now.addingTimeInterval(-600), end: now.addingTimeInterval(1_800), attendees: ["Ana Petrova"]

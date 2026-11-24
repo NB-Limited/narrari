@@ -55,7 +55,7 @@ private final class Rig {
             progress: MeetingTranscript.Progress(), settings: settings.store, recording: { nil }
         )
         fileJob = FileJob(library: library, retranscription: retranscription) { true }
-        let permissions = Permissions(settings: settings.store, access: access, microphoneStatus: { .authorized }, clock: clock)
+        let permissions = Permissions.fixed(settings: settings.store, access: access, clock: clock)
         let names = ["com.apple.mail": "Mail", "com.tinyspeck.slackmacgap": "Slack"]
         panel = MenuPanel(
             session: session, meetings: meetings.session, meetingLibrary: meetingLibrary,

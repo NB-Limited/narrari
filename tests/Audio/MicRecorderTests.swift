@@ -11,7 +11,7 @@ struct MicRecorderTests {
     private let inputs = FakeInputs()
 
     private func recorder(microphone: AVAuthorizationStatus = .authorized, write: MicRecorder.Write? = nil) -> MicRecorder {
-        let permissions = Permissions(settings: settings.store, access: .fixed(), microphoneStatus: { microphone })
+        let permissions = Permissions.fixed(settings: settings.store, microphone: microphone)
         guard let write else { return MicRecorder(settings: settings.store, permissions: permissions, inputs: inputs) }
         return MicRecorder(settings: settings.store, permissions: permissions, inputs: inputs, write: write)
     }

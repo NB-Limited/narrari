@@ -12,7 +12,7 @@ struct ShortcutsPageModelTests {
     }
 
     @Test func switching_fields_while_recording_resumes_hotkeys_once_recording_ends() {
-        let permissions = Permissions(settings: settings.store, access: .fixed(), microphoneStatus: { .authorized })
+        let permissions = Permissions.fixed(settings: settings.store)
         let monitor = HotkeyMonitor(settings: settings.store, permissions: permissions)
         let page = page(monitor)
 
@@ -25,7 +25,7 @@ struct ShortcutsPageModelTests {
     }
 
     @Test func page_that_goes_away_while_recording_gives_the_hotkeys_back() {
-        let permissions = Permissions(settings: settings.store, access: .fixed(), microphoneStatus: { .authorized })
+        let permissions = Permissions.fixed(settings: settings.store)
         let monitor = HotkeyMonitor(settings: settings.store, permissions: permissions)
         var page: ShortcutsPageModel? = page(monitor)
         page?.beginRecording(.dictation)
@@ -134,7 +134,7 @@ struct ShortcutsPageModelTests {
     }
 
     @Test func recording_the_open_window_shortcut_suspends_the_hotkeys_until_it_ends() {
-        let permissions = Permissions(settings: settings.store, access: .fixed(), microphoneStatus: { .authorized })
+        let permissions = Permissions.fixed(settings: settings.store)
         let monitor = HotkeyMonitor(settings: settings.store, permissions: permissions)
         let page = page(monitor)
 
