@@ -288,11 +288,11 @@ struct MeetingProcessingModelTests {
 
     @Test func at_launch_a_meeting_left_waiting_for_a_model_carries_on() async throws {
         let id = try await newMeeting()
-        var meeting = try await store.meeting(id)
-        meeting.steps.echo = Meeting.Step(.done)
-        meeting.steps.transcript = Meeting.Step(.done)
-        meeting.steps.speakers = Meeting.Step(.waiting, for: .speakerModel)
-        try await store.save(meeting)
+        try await store.update(id) { meeting in
+            meeting.steps.echo = Meeting.Step(.done)
+            meeting.steps.transcript = Meeting.Step(.done)
+            meeting.steps.speakers = Meeting.Step(.waiting, for: .speakerModel)
+        }
         let library = MeetingModels(store: models, fetch: FakeModelFetch(store: models).fetch)
 
         await processing(library).resume()

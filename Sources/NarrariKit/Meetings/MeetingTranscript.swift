@@ -77,15 +77,18 @@ public struct MeetingTranscript: MeetingStep {
             words.system = try await self.words(in: system) { [progress] in progress?.report((1 + $0) / tracks, of: id) }
         }
         let segments = Self.compose(words, pipeline: pipeline) { track, _ in track == .mic ? Self.ownerID : Self.othersID }
-        var meeting = try await store.meeting(id)
-        meeting.linesEdited = false
-        for (speaker, name) in [(Self.ownerID, ownerName), (Self.othersID, Self.othersName)]
-        where segments.contains(where: { $0.speaker == speaker }) && !meeting.speakers.contains(where: { $0.id == speaker }) {
-            meeting.speakers.append(Meeting.Speaker(id: speaker, name: name))
+        let speakers = [(Self.ownerID, ownerName), (Self.othersID, Self.othersName)].filter { speaker in
+            segments.contains { $0.speaker == speaker.0 }
         }
-        meeting.speechModel = modelName()
+        let model = modelName()
         try await store.write(words, of: id)
-        try await store.save(meeting)
+        try await store.update(id) { meeting in
+            meeting.linesEdited = false
+            for (speaker, name) in speakers where !meeting.speakers.contains(where: { $0.id == speaker }) {
+                meeting.speakers.append(Meeting.Speaker(id: speaker, name: name))
+            }
+            meeting.speechModel = model
+        }
         try await store.write(segments, of: id)
         Log.count("meeting-transcript-segments", segments.count)
     }

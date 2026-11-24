@@ -221,10 +221,10 @@ public final class MeetingPage {
             }
             segments[index].text = text
             try await store.write(segments, of: meeting.id)
-            var changed = try await store.meeting(meeting.id)
-            changed.linesEdited = true
-            try await store.save(changed)
-            meeting = changed
+            meeting = try await store.update(meeting.id) { meeting in
+                meeting.linesEdited = true
+                return meeting
+            }
             self.segments = segments
             Log.event("meeting-line-edited")
         } catch {
@@ -240,10 +240,10 @@ public final class MeetingPage {
     // Both are written first, so a quit before the summary lands keeps the choice for the run at launch.
     public func redoSummary(with template: String, model: String) async {
         do {
-            var changed = try await store.meeting(meeting.id)
-            changed.template = template
-            changed.summaryModel = model
-            try await store.save(changed)
+            try await store.update(meeting.id) { meeting in
+                meeting.template = template
+                meeting.summaryModel = model
+            }
         } catch {
             Log.failure("meeting-template-save", error: error)
         }
@@ -259,11 +259,9 @@ public final class MeetingPage {
     }
 
     // Saved first, like the summary's choice, so every later run keeps the count; 0 lets the split decide.
-    private func findSpeakersAgain(_ field: WritableKeyPath<Meeting, Int>, _ count: Int) async {
+    private func findSpeakersAgain(_ field: any WritableKeyPath<Meeting, Int> & Sendable, _ count: Int) async {
         do {
-            var changed = try await store.meeting(meeting.id)
-            changed[keyPath: field] = count
-            try await store.save(changed)
+            try await store.update(meeting.id) { $0[keyPath: field] = count }
         } catch {
             Log.failure("meeting-speaker-count-save", error: error)
         }

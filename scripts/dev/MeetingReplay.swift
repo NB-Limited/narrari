@@ -13,7 +13,7 @@ func meetingReplay(
     let seconds = minutes.map { $0 * 60 } ?? Double(max(microphone.count, system.count)) / SpeechAudio.sampleRate
     let data = URL(filePath: dataFolder)
     let store = MeetingStore(root: data.appending(path: "Meetings"), trash: MeetingStore.moveToTrash)
-    var meeting = Meeting(title: "Replay", startedAt: .now, app: "", source: .manual, template: "general", state: .recording)
+    let meeting = Meeting(title: "Replay", startedAt: .now, app: "", source: .manual, template: "general", state: .recording)
     let folder = try await store.create(meeting, appName: "")
     let replay = Replay(microphone: microphone, system: system, microphonePartsPerMillionFast: fastPPM)
     guard let defaults = UserDefaults(suiteName: data.appending(path: "settings").path) else { return }
@@ -51,9 +51,10 @@ func meetingReplay(
     guard let recording = recorder.stop() else { return }
     let lines = live.lines
     await live.stop()
-    meeting.durationMs = Int((recording.duration / .milliseconds(1)).rounded())
-    meeting.state = .ready
-    try await store.save(meeting)
+    try await store.update(meeting.id) { meeting in
+        meeting.durationMs = Int((recording.duration / .milliseconds(1)).rounded())
+        meeting.state = .ready
+    }
     print(String(format: "memory at stop: %.0f MB, peak while recording: %.0f MB", memoryMegabytes().footprint, reading.peakMegabytes))
     if liveMinutes != nil { reading.report(notice: live.notice, lines: lines) }
     print("meeting:  \(folder.path)")

@@ -353,10 +353,10 @@ struct SummaryServiceTests {
         let processing = processing(service)
         await processing.process(id)
 
-        var chosen = try await store.meeting(id)
-        chosen.template = "one-to-one"
-        chosen.summaryModel = "mlx-community/Qwen3.5-4B-MLX-4bit"
-        try await store.save(chosen)
+        try await store.update(id) { meeting in
+            meeting.template = "one-to-one"
+            meeting.summaryModel = "mlx-community/Qwen3.5-4B-MLX-4bit"
+        }
 
         await processing.retry(.summary, of: id)
 

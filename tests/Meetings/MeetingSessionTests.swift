@@ -298,6 +298,19 @@ struct MeetingSessionTests {
         #expect(try await store.meetings().meetings.map(\.state) == [.ready])
     }
 
+    // The page and the narrari command change the meeting through the store while it records.
+    @Test func a_change_made_to_the_meeting_while_it_records_is_kept_at_the_stop() async throws {
+        await recordCall()
+        let id = try #require(session.recordingID)
+        try await store.update(id) { $0.title = "Release planning" }
+
+        await session.stop()
+
+        let meeting = try await store.meeting(id)
+        #expect(meeting.title == "Release planning" && meeting.state == .ready && meeting.durationMs == 2_000)
+        processor.gate.open()
+    }
+
     @Test func quitting_while_a_meeting_records_saves_it() async throws {
         await session.start()
         replay.play(seconds: 2)

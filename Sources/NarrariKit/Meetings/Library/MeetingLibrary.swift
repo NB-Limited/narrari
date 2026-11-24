@@ -244,7 +244,7 @@ public final class MeetingLibrary {
     }
 
     private func importRecording(_ url: URL) async {
-        var meeting = Meeting(
+        let meeting = Meeting(
             title: url.deletingPathExtension().lastPathComponent, startedAt: await AudioFileDecoder.recordingDate(of: url) ?? now(), app: "",
             source: .import, template: settings.value(MeetingsSettings.summaryTemplate), state: .importing
         )
@@ -254,9 +254,10 @@ public final class MeetingLibrary {
             selection = .meeting(meeting.id)
             do {
                 let seconds = try await AudioFileDecoder.writeTrack(from: url, to: try await store.audio(.microphone, of: meeting.id))
-                meeting.durationMs = Int(seconds * 1000)
-                meeting.state = .ready
-                try await store.save(meeting)
+                try await store.update(meeting.id) { meeting in
+                    meeting.durationMs = Int(seconds * 1000)
+                    meeting.state = .ready
+                }
             } catch {
                 do {
                     try await store.delete(meeting.id)
@@ -281,11 +282,9 @@ public final class MeetingLibrary {
         importError = nil
     }
 
-    private func change(_ id: UUID, _ edit: (inout Meeting) -> Void) async {
+    private func change(_ id: UUID, _ edit: @Sendable (inout Meeting) -> Void) async {
         do {
-            var meeting = try await store.meeting(id)
-            edit(&meeting)
-            try await store.save(meeting)
+            try await store.update(id, edit)
         } catch {
             Log.failure("meeting-change", error: error)
         }

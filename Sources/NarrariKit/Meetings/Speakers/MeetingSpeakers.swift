@@ -82,9 +82,8 @@ public struct MeetingSpeakers: MeetingStep {
             let cluster = micClusters[mine[index]]
             return cluster.hasPrefix(OwnSide.guestPrefix) ? cast.id(of: cluster) : MeetingTranscript.ownerID
         }
-        var updated = try await store.meeting(id)
-        updated.speakers = cast.speakers
-        try await store.save(updated)
+        let speakers = cast.speakers
+        try await store.update(id) { $0.speakers = speakers }
         try await store.write(segments, of: id)
         try await SpeakerRenaming(store: store, memory: memory, settings: settings)
             .replay(in: id, others: twoTracks ? Self.mostHeard(others, in: cast) : nil)

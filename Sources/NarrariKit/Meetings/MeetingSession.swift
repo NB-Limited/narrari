@@ -280,38 +280,39 @@ public final class MeetingSession: MeetingPresence {
         live = .idle
         await liveText?.stop()
         await names.stop()
-        var done = started
-        done.keep(recording, systemAudioWasAllowed: permissions.systemAudio == .allowed)
+        let wasAllowed = permissions.systemAudio == .allowed
         if recording.heardSystemSound {
             permissions.record(.allowed)
         } else if started.source == .call {
             permissions.record(.silent)
         }
-        done.state = .ready
-        done.stop = stop
         // Calendar access given, or the event begun, while recording: the store renames the folder now it has stopped.
-        if done.title.isEmpty, let event = await calendar.event(at: .now) {
-            done.title = event.title
-            done.addAttendees(event.attendees, from: .calendar)
-        }
+        let event = started.title.isEmpty ? await calendar.event(at: .now) : nil
         do {
-            try await store.save(done)
+            try await store.update(started.id) { meeting in
+                meeting.keep(recording, systemAudioWasAllowed: wasAllowed)
+                meeting.state = .ready
+                meeting.stop = stop
+                if meeting.title.isEmpty, let event {
+                    meeting.title = event.title
+                    meeting.addAttendees(event.attendees, from: .calendar)
+                }
+            }
         } catch {
             Log.failure("meeting-save", error: error)
         }
         guard let processor else { return }
         processing += 1
         Task {
-            await processor.process(done.id)
+            await processor.process(started.id)
             processing -= 1
         }
     }
 
     private func heard(_ found: [String]) async {
-        guard var meeting, meeting.addAttendees(found, from: .callWindow) else { return }
-        self.meeting = meeting
+        guard let id = meeting?.id, meeting?.addAttendees(found, from: .callWindow) == true else { return }
         do {
-            try await store.save(meeting)
+            try await store.update(id) { $0.addAttendees(found, from: .callWindow) }
         } catch {
             Log.failure("meeting-names-save", error: error)
         }
