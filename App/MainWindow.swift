@@ -94,8 +94,20 @@ final class MainWindow: NSObject, NSWindowDelegate {
         window.contentMinSize = WindowMetrics.minimumSize
         window.backgroundColor = NSColor(named: "Window")
         window.delegate = self
-        window.contentView = NSHostingView(rootView: makeContent(route))
-        if !window.setFrameUsingName(Self.frameName) { window.center() }
+        // As the content view itself, the page's own size replaces the window's limits and resizes the window.
+        let hosting = NSHostingView(rootView: makeContent(route))
+        hosting.sizingOptions = []
+        hosting.autoresizingMask = [.width, .height]
+        let content = NSView(frame: NSRect(origin: .zero, size: WindowMetrics.defaultSize))
+        hosting.frame = content.bounds
+        content.addSubview(hosting)
+        window.contentView = content
+        let fits = window.setFrameUsingName(Self.frameName)
+            && (window.screen ?? NSScreen.main).map { window.frame.width <= $0.visibleFrame.width && window.frame.height <= $0.visibleFrame.height } ?? true
+        if !fits {
+            window.setContentSize(WindowMetrics.defaultSize)
+            window.center()
+        }
         window.setFrameAutosaveName(Self.frameName)
         self.window = window
         return window
