@@ -274,9 +274,9 @@ private struct Lines {
             let count = history.dictations == 1 ? "1 dictation" : "\(history.dictations) dictations"
             fact("History: \(count), \(size(history.bytes)) with their audio")
         } else {
-            problem("History: could not be read")
+            problem(HistoryLibrary.readFailed.message)
         }
-        guard let meetings = facts.meetings else { return problem("Meetings: could not be read") }
+        guard let meetings = facts.meetings else { return problem(MeetingLibrary.readFailed.message) }
         let count = meetings.count == 1 ? "1 meeting" : "\(meetings.count) meetings"
         let unfinished = meetings.unfinished.values.reduce(0, +)
         fact("Meetings: \(count)" + (unfinished > 0 ? ", \(unfinished) unfinished:" : ""))

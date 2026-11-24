@@ -1,3 +1,4 @@
+import Foundation
 import NarrariKit
 import Testing
 
@@ -17,6 +18,19 @@ struct CommandTests {
         #expect(reply?.status == 2)
         #expect(reply?.errors.contains("dictate is not a narrari command.") == true)
         #expect(reply?.errors.contains("Usage: narrari") == true)
+    }
+
+    @Test @MainActor func an_unreadable_list_says_what_the_window_says() async throws {
+        let folder = TemporaryFolder()
+        let settings = ThrowawaySettings()
+        for name in ["History", "Meetings"] { try Data().write(to: folder.url.appending(path: name)) }
+        let context = Command.Context.throwaway(in: folder, settings: settings.store)
+
+        let meetings = await Command(arguments: ["meetings", "list"])?.run(in: context)
+        let dictations = await Command(arguments: ["dictations", "list"])?.run(in: context)
+
+        #expect(meetings?.errors == "The meetings could not be read. Try again.\n" && meetings?.status == 1)
+        #expect(dictations?.errors == "The dictations could not be read. Try again.\n")
     }
 }
 

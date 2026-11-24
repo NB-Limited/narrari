@@ -12,6 +12,14 @@ public enum RecordKind: String, Sendable, CaseIterable {
         }
     }
 
+    // What the window says when its list can't be read.
+    var readFailed: Problem {
+        switch self {
+        case .meetings: MeetingLibrary.readFailed
+        case .dictations: HistoryLibrary.readFailed
+        }
+    }
+
     var singular: String {
         switch self {
         case .meetings: "meeting"
