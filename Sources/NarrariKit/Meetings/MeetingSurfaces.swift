@@ -8,6 +8,9 @@ public enum MeetingNotice: Sendable, Equatable {
     case liveText(LiveTextNotice)
 
     static let couldNotStart = Problem("meeting.start-failed", "The meeting could not start. Try again.", canRetry: true)
+    static let notSaved = Problem(
+        "meeting.not-saved", "The meeting could not be saved. Its audio is kept; quit Narrari and open it again to recover it."
+    )
 
     init(startError error: any Error) {
         self = if let refusal = error as? RecorderError { .refused(refusal) } else { .failed(error.problem(or: Self.couldNotStart)) }
@@ -67,7 +70,7 @@ public final class MeetingSurfaces {
     @ObservationIgnored private let clock: any Clock<Duration>
     @ObservationIgnored private let lingering: TimedFlag
     @ObservationIgnored private var noticeEnd: Task<Void, Never>?
-    @ObservationIgnored private var seen: (refused: Bool, lowDisk: Bool, liveText: LiveTextNotice?) = (false, false, nil)
+    @ObservationIgnored private var seen: (refused: Bool, lowDisk: Bool, notSaved: UUID?, liveText: LiveTextNotice?) = (false, false, nil, nil)
 
     static let chipLinger: Duration = .seconds(1)
 
@@ -150,12 +153,12 @@ public final class MeetingSurfaces {
         "Call ended, stopping in \(secondsLeft) s"
     }
 
-    // A refused start, a stop for a full disk and live text stopping each show once, for as long as a dictation's notice.
+    // A refused start, a stop for a full disk or one not saved, and live text stopping each show once, for as long as a dictation's notice.
     private func followNotices() {
         let now = withObservationTracking {
             (
                 refused: session.startError.map(MeetingNotice.init(startError:)), lowDisk: session.stoppedForLowDisk,
-                liveText: session.liveText?.notice
+                notSaved: session.notSaved, liveText: session.liveText?.notice
             )
         } onChange: { [weak self] in
             Task { @MainActor in self?.followNotices() }
@@ -164,10 +167,12 @@ public final class MeetingSurfaces {
             show(refused)
         } else if now.lowDisk, !seen.lowDisk {
             show(.stoppedForLowDisk)
+        } else if let id = now.notSaved, id != seen.notSaved {
+            show(.failed(MeetingNotice.notSaved))
         } else if let live = now.liveText, live != seen.liveText {
             show(.liveText(live))
         }
-        seen = (now.refused != nil, now.lowDisk, now.liveText)
+        seen = (now.refused != nil, now.lowDisk, now.notSaved, now.liveText)
     }
 
     private func show(_ notice: MeetingNotice) {

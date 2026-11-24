@@ -311,6 +311,27 @@ struct MeetingSessionTests {
         processor.gate.open()
     }
 
+    @Test func a_stop_that_cannot_be_saved_shows_why_on_its_row_and_is_not_processed() async throws {
+        await recordCall()
+        let id = try #require(session.recordingID)
+        let meetingFolder = try await store.folder(of: id)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: meetingFolder.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: meetingFolder.path) }
+
+        await session.stop()
+
+        let models = ModelStore(root: folder.url.appending(path: "Models"))
+        let library = MeetingLibrary(
+            store: store, processor: processor, models: MeetingModels(store: models, fetch: FakeModelFetch(store: models).fetch),
+            settings: settings.store, recording: { [session] in session.recordingID }
+        )
+        let meeting = try await store.meeting(id)
+        let notSaved = Problem("meeting.not-saved", "The meeting could not be saved. Its audio is kept; quit Narrari and open it again to recover it.")
+        #expect(session.state == .idle)
+        #expect(library.state(of: meeting) == .work(.failed(notSaved)))
+        #expect(processor.meetings.withLock { $0 }.isEmpty)
+    }
+
     @Test func quitting_while_a_meeting_records_saves_it() async throws {
         await session.start()
         replay.play(seconds: 2)

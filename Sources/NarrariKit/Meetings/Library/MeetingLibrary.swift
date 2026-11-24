@@ -127,6 +127,8 @@ public final class MeetingLibrary {
 
     public func state(of meeting: Meeting) -> RowState? {
         if meeting.id == recording() { return .recording }
+        // Its stop could not be written; the next launch recovers it.
+        if meeting.state == .recording { return .work(.failed(MeetingNotice.notSaved)) }
         if meeting.state == .importing { return .work(.working(.importing)) }
         let steps = MeetingProcessing.Step.allCases.map { ($0, meeting.steps[$0]) }
         if let running = steps.first(where: { $0.1.status == .running }) { return .work(.working(MeetingPage.activity(running.0))) }

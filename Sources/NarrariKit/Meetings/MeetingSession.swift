@@ -31,6 +31,8 @@ public final class MeetingSession: MeetingPresence {
     public private(set) var startError: (any Error)?
     // The last meeting stopped by itself because the disk ran nearly full.
     public private(set) var stoppedForLowDisk = false
+    // The last meeting's stop could not be written, so its file still says it records until the next launch recovers it.
+    public private(set) var notSaved: UUID?
     // A track of the meeting recording now that is going wrong.
     public private(set) var trouble: RecordingTrouble?
     public private(set) var offeredTitle: String?
@@ -232,6 +234,7 @@ public final class MeetingSession: MeetingPresence {
         live = .recording
         startError = nil
         stoppedForLowDisk = false
+        notSaved = nil
         let start = Task { await open(source, app: app) }
         starting = start
         await start.value
@@ -298,8 +301,13 @@ public final class MeetingSession: MeetingPresence {
                     meeting.addAttendees(event.attendees, from: .calendar)
                 }
             }
+        } catch MeetingError.notFound {
+            Log.event("meeting-deleted-while-recording")
+            return
         } catch {
             Log.failure("meeting-save", error: error)
+            notSaved = started.id
+            return
         }
         guard let processor else { return }
         processing += 1
