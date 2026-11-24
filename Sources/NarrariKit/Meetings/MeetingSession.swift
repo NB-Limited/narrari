@@ -28,9 +28,8 @@ public final class MeetingSession: MeetingPresence {
 
     // Seconds left before a call that ended stops recording; nil when no countdown runs.
     public private(set) var stopCountdown: Int?
-    public private(set) var startError: (any Error)?
-    // The last meeting stopped by itself because the disk ran nearly full.
-    public private(set) var stoppedForLowDisk = false
+    // Why the last meeting could not start, or stopped by itself because the disk ran nearly full.
+    public private(set) var problem: Problem?
     // A track of the meeting recording now that is going wrong.
     public private(set) var trouble: RecordingTrouble?
     public private(set) var offeredTitle: String?
@@ -67,6 +66,8 @@ public final class MeetingSession: MeetingPresence {
     @ObservationIgnored private var following: [Task<Void, Never>] = []
     @ObservationIgnored private var sleptThroughCall = false
 
+    static let couldNotStart = Problem("meeting.start-failed", "The meeting could not start. Try again.", canRetry: true)
+    public static let stoppedForLowDisk = Problem("meeting.stopped-low-disk", "Recording stopped: the disk is nearly full. Free some space.")
     private static let countdownSeconds = 10
     private static let shutdownLimit: Duration = .seconds(5)
 
@@ -89,7 +90,7 @@ public final class MeetingSession: MeetingPresence {
         self.appName = appName
         recorder.onLowDisk = { [weak self] recording in
             guard let self, let meeting else { return }
-            stoppedForLowDisk = true
+            problem = Self.stoppedForLowDisk
             Task { await self.finish(meeting, recording, stop: .lowDisk) }
         }
         recorder.onTrouble = { [weak self] in self?.trouble = $0 }
@@ -230,8 +231,7 @@ public final class MeetingSession: MeetingPresence {
 
     private func begin(_ source: Meeting.Source, app: String) async {
         live = .recording
-        startError = nil
-        stoppedForLowDisk = false
+        problem = nil
         let start = Task { await open(source, app: app) }
         starting = start
         await start.value
@@ -267,7 +267,7 @@ public final class MeetingSession: MeetingPresence {
             names.start(app: app) { [weak self] found in await self?.heard(found) }
         } catch {
             Log.failure("meeting-start", error: error)
-            startError = error
+            problem = error.problem(or: Self.couldNotStart)
             live = .idle
         }
     }

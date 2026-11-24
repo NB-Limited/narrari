@@ -75,9 +75,14 @@ public struct PillState: Sendable, Equatable {
 
 extension PillLabel {
     public init(_ notice: MeetingNotice) {
+        let refusals: [RecorderError] = [.microphoneDenied, .microphoneAccessRequested, .noInput, .startFailed]
         switch notice {
-        case .refused(let refusal): self.init(.microphone(refusal))
-        case .stoppedForLowDisk, .failed: self.init(symbol: "exclamationmark.triangle.fill", text: notice.message, isError: true)
+        case .failed(let problem):
+            if let refusal = refusals.first(where: { $0.problem == problem }) {
+                self.init(.microphone(refusal))
+            } else {
+                self.init(symbol: "exclamationmark.triangle.fill", text: notice.message, isError: true)
+            }
         case .liveText: self.init(symbol: "exclamationmark.circle", text: notice.message)
         }
     }
