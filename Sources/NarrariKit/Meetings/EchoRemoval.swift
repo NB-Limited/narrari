@@ -47,9 +47,13 @@ public struct EchoRemoval: MeetingStep {
     }
 
     public func echoShare(microphone: URL, system: URL) async throws -> Double {
+        async let microphoneSpeech = findSpeech(microphone)
+        async let systemSpeech = findSpeech(system)
+        async let microphoneLevels = EchoCheck.levels(of: microphone)
+        async let systemLevels = EchoCheck.levels(of: system)
         let check = EchoCheck(
-            microphoneSpeech: try await findSpeech(microphone), systemSpeech: try await findSpeech(system),
-            microphoneLevels: try EchoCheck.levels(of: microphone), systemLevels: try EchoCheck.levels(of: system)
+            microphoneSpeech: try await microphoneSpeech, systemSpeech: try await systemSpeech,
+            microphoneLevels: try await microphoneLevels, systemLevels: try await systemLevels
         )
         return check.share
     }

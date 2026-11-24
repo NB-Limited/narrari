@@ -6,7 +6,10 @@ import SwiftUI
 struct NarrariApp: App {
     // With a command word in its arguments the executable is the narrari command; it prints and exits before any of the app starts.
     static func main() {
-        guard let command = Command(arguments: Array(CommandLine.arguments.dropFirst())) else { return startApp() }
+        guard let command = Command(arguments: Array(CommandLine.arguments.dropFirst())) else {
+            AppDelegate.mark("launch-main")
+            return startApp()
+        }
         Command.reopenInsideBundle()
         Task {
             let reply = await command.run(in: Command.Context(
@@ -121,6 +124,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         fileJob = FileJob(library: library, retranscription: retranscription) { session.modelState == .ready }
         super.init()
+    }
+
+    // Seconds since the process started, so each launch stage reads off the one before it in the log.
+    fileprivate static func mark(_ stage: StaticString) {
+        if let seconds = ProcessClock.secondsSinceProcessStart() { Log.timing(stage, seconds: seconds) }
     }
 
     private static let templatesURL = AppPaths.applicationSupport.appending(path: "Templates", directoryHint: .isDirectory)
@@ -336,6 +344,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.mark("launch-finishing")
         if let running = otherRunningCopy() {
             running.activate()
             NSApplication.shared.terminate(nil)
@@ -352,7 +361,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         hotkeys.start()
+        Self.mark("launch-hotkeys-started")
         makeSurfaces()
+        Self.mark("launch-surfaces-made")
         meeting.follow()
         session.frontmostAppChanged()
         permissions.start()
@@ -379,9 +390,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { [vocabulary] in
             await vocabulary.follow(.shared)
         }
-        if let seconds = ProcessClock.secondsSinceProcessStart() {
-            Log.timing("cold-start", seconds: seconds)
-        }
+        Self.mark("cold-start")
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

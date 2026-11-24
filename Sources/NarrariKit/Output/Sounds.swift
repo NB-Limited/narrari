@@ -76,13 +76,18 @@ public final class Sounds: SoundPlaying {
     private var loaded: (set: SoundSet, clips: [Sound: any SoundClip])?
     private var following: Task<Void, Never>?
 
-    public init(settings: SettingsStore, clock: any Clock<Duration> = ContinuousClock(), load: @escaping Loader = Sounds.loadFile) {
+    // The clips load once `connect` has joined the audio output, so a launch never waits on it.
+    public init(
+        settings: SettingsStore, clock: any Clock<Duration> = ContinuousClock(), load: @escaping Loader = Sounds.loadFile,
+        connect: @escaping @Sendable () async -> Void = Sounds.connectOutput
+    ) {
         self.settings = settings
         self.clock = clock
         self.load = load
-        _ = chosenClips()
         let updates = SettingsChanges.updates(of: [DictationSettings.soundSet.key])
         following = Task { [weak self] in
+            await connect()
+            _ = self?.chosenClips()
             for await _ in updates { _ = self?.chosenClips() }
         }
     }
@@ -93,6 +98,15 @@ public final class Sounds: SoundPlaying {
 
     public static func loadFile(_ set: SoundSet, _ sound: Sound) -> (any SoundClip)? {
         set.url(for: sound).flatMap(FileClip.init)
+    }
+
+    // The first player made ready joins the process to the audio output, a third of a second; every one after it is ready at once.
+    @concurrent
+    public nonisolated static func connectOutput() async {
+        let start = ContinuousClock.now
+        guard let url = SoundSet.standard.url(for: .start) else { return }
+        (try? AVAudioPlayer(contentsOf: url))?.prepareToPlay()
+        Log.timing("sound-output-connected", seconds: (ContinuousClock.now - start) / .seconds(1))
     }
 
     // Waits until the sound has played, so muting other audio afterwards never cuts it off.

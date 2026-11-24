@@ -1,13 +1,13 @@
 import Foundation
 import NarrariKit
 
-private struct NoDictation: DictationActivity {
+struct NoDictation: DictationActivity {
     func updates() -> AsyncStream<Bool> {
         AsyncStream { $0.yield(false) }
     }
 }
 
-private struct NoKeys: KeyStoring {
+struct NoKeys: KeyStoring {
     func read(_: String) -> String? { nil }
     func contains(_: String) -> Bool { false }
     func write(_: String, for _: String) {}
