@@ -451,6 +451,7 @@ let isRigQuick = flag("--quick", in: &arguments)
 let isJSON = flag("--json", in: &arguments)
 let searchMemoryFolder = option("--search-memory", in: &arguments)
 let historySearchMemoryFolder = option("--history-search-memory", in: &arguments)
+let historyFolder = option("--history", in: &arguments) ?? AppPaths.history.path
 let liveMinutes = option("--live-until", in: &arguments).flatMap(Double.init) ?? (flag("--live", in: &arguments) ? .infinity : nil)
 let usage = """
     usage: narrari-dev transcribe [--dictionary <folder>] <audio or video file>
@@ -464,6 +465,7 @@ let usage = """
            narrari-dev pipeline [--dictionary <folder>] [--model <id>] [--chat <address>] [--off] "<transcript>"
            narrari-dev remote [--dictionary <folder>] <address> <model> <audio file>
            narrari-dev preview-latency <audio file>...
+           narrari-dev dictation-replay [--history <folder>] [--model <id>] text|ahead <out folder>
            narrari-dev modes
            narrari-dev speed [--json]
            narrari-dev meeting replay [--minutes <n>] [--fast-ppm <n>] [--live | --live-until <minutes>]
@@ -494,6 +496,8 @@ do {
             await localEngine(model: cleanupModel)
         }
         await pipeline(arguments[1], engine: engine, dictionary: dictionary ?? .shared, isCleanupOn: !isCleanupOff)
+    case ("dictation-replay", 3) where ["text", "ahead"].contains(arguments[1]):
+        try await dictationReplay(arguments[1], history: historyFolder, out: arguments[2], model: cleanupModel)
     case ("modes", 1): try modes()
     case ("speed", 1):
         if let searchMemoryFolder {
