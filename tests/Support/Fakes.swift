@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import NarrariKit
 import Observation
@@ -27,6 +28,7 @@ final class FakeRecorder: AudioCapture {
     private(set) var microphoneName: String? = "MacBook Pro Microphone"
     var startError: (any Error)?
     var samples: [Float]
+    var problem: Problem?
 
     init(samples: [Float] = speech(seconds: 1)) {
         self.samples = samples
@@ -38,7 +40,7 @@ final class FakeRecorder: AudioCapture {
         try Data("caff".utf8).write(to: file)
     }
 
-    func stop() -> [Float] { samples }
+    func stop() -> RecordedAudio { RecordedAudio(samples: samples, problem: problem) }
 
     func recentSamples(_ count: Int) -> [Float] { Array(samples.suffix(count)) }
 
@@ -224,6 +226,18 @@ final class FakePasteboard: Pasteboard {
 
     var text: String? {
         contents.first?.first { $0.type == .string }.map { String(decoding: $0.data, as: UTF8.self) }
+    }
+}
+
+extension Permissions {
+    // Every grant from the test; nothing is asked of this Mac.
+    static func fixed(
+        settings: SettingsStore, access: InputAccess = .fixed(), microphone: AVAuthorizationStatus = .authorized,
+        clock: any Clock<Duration> = ContinuousClock()
+    ) -> Permissions {
+        Permissions(
+            settings: settings, access: access, microphoneStatus: { microphone }, calendarStatus: { .denied }, askForCalendar: {}, clock: clock
+        )
     }
 }
 

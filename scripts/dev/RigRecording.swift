@@ -100,7 +100,7 @@ struct RigRecording {
         settings.set(microphoneUID, for: DictationSettings.microphoneUID)
         settings.set(false, for: DictationSettings.prefersBuiltInOverBluetooth)
         // Access was read above without asking, so the recorder is told it is given and never asks itself.
-        let permissions = Permissions(settings: settings, access: InputAccess(isAccessibilityGranted: { true }), microphoneStatus: { .authorized })
+        let permissions = Permissions.given(settings)
         return MeetingRecorder(
             settings: settings, permissions: permissions, inputs: watch, system: watch, freeSpace: MeetingRecorder.volumeFreeSpace,
             hostNow: hostNow, clock: ContinuousClock()
@@ -183,5 +183,15 @@ struct RigRecording {
     private func sleep(until host: Double) async throws {
         let wait = host - hostSeconds()
         if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
+    }
+}
+
+extension Permissions {
+    // Every grant given and the calendar never read, so a dev run asks the system nothing.
+    static func given(_ settings: SettingsStore) -> Permissions {
+        Permissions(
+            settings: settings, access: InputAccess(isAccessibilityGranted: { true }), microphoneStatus: { .authorized },
+            calendarStatus: { .denied }, askForCalendar: {}
+        )
     }
 }

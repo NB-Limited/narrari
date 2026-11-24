@@ -110,7 +110,8 @@ public final class SpeechPageModel {
     public func perform(_ action: ModelRow.Action, on model: CatalogueModel) {
         if action == .cancel {
             changeError = nil
-            return models.cancel()
+            models.cancel()
+            return
         }
         choose(model)
     }

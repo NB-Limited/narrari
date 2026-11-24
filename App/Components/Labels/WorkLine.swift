@@ -2,7 +2,7 @@ import NarrariKit
 import SwiftUI
 
 // A WorkState as one line: its label, a bar while its share is known, the time it has taken when it carries a start,
-// and Try again when the problem says it can help.
+// and Try again when the problem says it can help, its message then leaving out the words that say the same.
 struct WorkLine: View {
     enum Bar {
         case beside(width: CGFloat)
@@ -20,10 +20,14 @@ struct WorkLine: View {
             TimelineView(.periodic(from: .now, by: MeetingMetrics.timerTick)) { context in
                 line(state.label(at: context.date))
             }
+        } else if let problem = state.problem, showsRetry {
+            line(problem.besideRetry)
         } else {
             line(state.label)
         }
     }
+
+    private var showsRetry: Bool { onRetry != nil && state.problem?.canRetry == true }
 
     @ViewBuilder private func line(_ text: String) -> some View {
         switch bar {
@@ -64,7 +68,7 @@ struct WorkLine: View {
     }
 
     @ViewBuilder private var retry: some View {
-        if let onRetry, state.problem?.canRetry == true {
+        if let onRetry, showsRetry {
             Spacer(minLength: Space.s8)
             Button("Try again", action: onRetry).buttonStyle(.secondary)
         }

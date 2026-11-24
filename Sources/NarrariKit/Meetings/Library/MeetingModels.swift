@@ -7,11 +7,16 @@ import Observation
 public final class MeetingModels: MeetingModelSupply {
     public typealias Fetch = @Sendable (AudioModel, _ progress: @escaping @Sendable (Double) -> Void) async throws -> Void
 
+    // What is the model's own; its download and a failed one are WorkState, as on every surface.
     public enum Status: Sendable, Equatable {
         case notDownloaded
-        case downloading(Double)
         case onThisMac(bytes: Int64)
-        case failed(Problem)
+        case work(WorkState)
+
+        public var work: WorkState {
+            if case .work(let work) = self { return work }
+            return .idle
+        }
     }
 
     public private(set) var statuses: [AudioModel: Status] = [:]
@@ -53,14 +58,14 @@ public final class MeetingModels: MeetingModelSupply {
         let purpose = Self.entry(model)?.purpose.map { "\($0), " } ?? ""
         return switch status(of: model) {
         case .onThisMac(let bytes): "\(purpose)\(MetricText.bytes(bytes)), on this Mac"
-        case .downloading(let fraction): WorkState.working(.downloading, progress: fraction).label
-        case .notDownloaded, .failed: "\(purpose)\(MetricText.bytes(Self.size(of: model)))"
+        case .work(let work) where work.activity == .downloading: work.label
+        case .notDownloaded, .work: "\(purpose)\(MetricText.bytes(Self.size(of: model)))"
         }
     }
 
     public func refresh() {
         for model in Self.all where downloads[model] == nil {
-            let bytes = (try? store.bytesOnDisk(named: model.folder)) ?? 0
+            let bytes = store.isPresent(named: model.folder) ? (try? store.bytesOnDisk(named: model.folder)) ?? 0 : 0
             statuses[model] = bytes > 0 ? .onThisMac(bytes: bytes) : .notDownloaded
         }
     }
@@ -165,7 +170,7 @@ public final class MeetingModels: MeetingModelSupply {
     }
 
     private func start(_ model: AudioModel) -> Task<Void, Never> {
-        statuses[model] = .downloading(0)
+        statuses[model] = Self.downloading(0)
         return Task { [weak self, store, fetch] in
             do {
                 try await fetch(model) { fraction in
@@ -181,17 +186,21 @@ public final class MeetingModels: MeetingModelSupply {
                 }
             } catch {
                 Log.failure("meeting-model-download", error: error)
-                self?.statuses[model] = .failed(Self.downloadFailed)
+                self?.statuses[model] = .work(.failed(Self.downloadFailed))
             }
             self?.downloads[model] = nil
-            if case .failed = self?.statuses[model] { return }
+            if self?.statuses[model]?.work.problem != nil { return }
             self?.refresh()
         }
     }
 
     private func progress(_ model: AudioModel, _ fraction: Double) {
         guard downloads[model] != nil else { return }
-        statuses[model] = .downloading(fraction)
+        statuses[model] = Self.downloading(fraction)
+    }
+
+    private static func downloading(_ fraction: Double) -> Status {
+        .work(.working(.downloading, progress: fraction))
     }
 }
 
@@ -215,9 +224,10 @@ public struct SharedModel {
     }
 
     var status: MeetingModels.Status {
-        if case .preparing(let fraction, isDownloading: true) = state() { return .downloading(fraction) }
+        let state = state()
+        if case .preparing(_, isDownloading: true) = state { return .work(state.work) }
         if isOnThisMac() { return .onThisMac(bytes: size()) }
-        if case .failed = state() { return .failed(MeetingModels.downloadFailed) }
+        if case .failed = state { return .work(.failed(MeetingModels.downloadFailed)) }
         return .notDownloaded
     }
 

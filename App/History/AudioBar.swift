@@ -3,20 +3,26 @@ import SwiftUI
 
 struct AudioBar: View {
     let playback: AudioPlayback
+    var problem: Problem?
 
     private static let keyStep: TimeInterval = 1
 
     var body: some View {
-        HStack(spacing: Space.s12) {
-            PlayButton(playback: playback)
-                .meetsEdge(.leading)
+        VStack(alignment: .leading, spacing: Space.s8) {
+            if let problem {
+                FormError(message: problem.message)
+            }
+            HStack(spacing: Space.s12) {
+                PlayButton(playback: playback)
+                    .meetsEdge(.leading)
 
-            Scrubber(playback: playback, keyStep: Self.keyStep)
+                Scrubber(playback: playback, keyStep: Self.keyStep)
 
-            Text("\(EntryFormat.position(playback.position)) / \(EntryFormat.position(playback.duration))")
-                .font(Typeface.position)
-                .foregroundStyle(Color.muted)
-                .accessibilityHidden(true)
+                Text("\(EntryFormat.position(playback.position)) / \(EntryFormat.position(playback.duration))")
+                    .font(Typeface.position)
+                    .foregroundStyle(Color.muted)
+                    .accessibilityHidden(true)
+            }
         }
         .padding(EdgeInsets(top: Space.s12, leading: Space.s36, bottom: Space.s16, trailing: Space.s36))
     }

@@ -13,6 +13,7 @@ extension DictationSession {
             outcome: outcome
         )
         entry.mode = dictation.modeName
+        entry.audioFailure = dictation.audioProblem?.code
         return entry
     }
 

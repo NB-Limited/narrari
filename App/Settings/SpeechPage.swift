@@ -112,7 +112,9 @@ private struct MeetingModelRow: View {
                         Button("Download") { models.begin([model]) }
                             .buttonStyle(.secondary)
                             .accessibilityLabel("Download \(name)")
-                    case .downloading:
+                    case .work(.failed):
+                        Button("Try again") { models.begin([model]) }.buttonStyle(.secondary)
+                    case .work:
                         Button("Cancel") { models.cancel(model) }.buttonStyle(.secondary)
                     case .onThisMac:
                         Button { isDeleting = true } label: { Image(systemName: "trash") }
@@ -120,18 +122,13 @@ private struct MeetingModelRow: View {
                             .accessibilityLabel("Delete \(name)")
                             .iconLabel("Delete \(name)")
                             .meetsEdge()
-                    case .failed:
-                        Button("Try again") { models.begin([model]) }.buttonStyle(.secondary)
                     }
                 }
-                switch status {
-                case .downloading(let fraction):
+                if let problem = status.work.problem {
+                    FormError(message: problem.besideRetry).padding(.top, ControlMetrics.errorGap)
+                } else if let fraction = status.work.progress {
                     ProgressBar(fraction: fraction, label: "Downloading \(name)", track: .meterTrack)
                         .padding(.top, SettingsGrid.progressTop)
-                case .failed(let problem):
-                    FormError(message: problem.message).padding(.top, ControlMetrics.errorGap)
-                default:
-                    EmptyView()
                 }
             }
         }

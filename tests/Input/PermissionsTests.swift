@@ -23,6 +23,8 @@ struct PermissionsTests {
             settings: settings.store,
             access: InputAccess(isAccessibilityGranted: { grant.isOn }),
             microphoneStatus: { .authorized },
+            calendarStatus: { .denied },
+            askForCalendar: {},
             clock: clock
         )
     }

@@ -76,6 +76,7 @@ public final class DictationSession {
         var isConfirmed = false
         var isHandsFree = false
         var durationMs = 0
+        var audioProblem: Problem?
 
         var cleanup: CleanupSwitch {
             if isCleanupOn != isCleanupFlipped { return .on }
@@ -196,7 +197,7 @@ public final class DictationSession {
         if phase == .recording {
             gesture.reset()
             hotkeys.setRecordingKeys(.off)
-            _ = recorder.stop()
+            _ = stopRecorder()
             markRecordingEnded()
             endFeedback(playingStopSound: false)
             finish(.failed)
@@ -303,7 +304,7 @@ public final class DictationSession {
         guard phase == .recording, let dictation else { return }
         if dictation.isHandsFree { Log.event("dictation-stop-hands-free") } else { Log.event("dictation-stop-held") }
         hotkeys.setRecordingKeys(.off)
-        let samples = recorder.stop()
+        let samples = stopRecorder()
         markRecordingEnded()
         endFeedback(playingStopSound: true)
         phase = .transcribing
@@ -320,7 +321,7 @@ public final class DictationSession {
         case .tooShort: Log.event("discard-too-short")
         }
         hotkeys.setRecordingKeys(.off)
-        _ = recorder.stop()
+        _ = stopRecorder()
         markRecordingEnded()
         endFeedback(playingStopSound: false)
         // A Narrari shortcut pressed with the dictation key is what the user meant, so it ends without a word or a sound.
@@ -342,6 +343,13 @@ public final class DictationSession {
         guard phase == .recording else { return }
         show(.microphoneSwitched(name))
         if !recorder.hasHeardSound { watchForSilence() }
+    }
+
+    // Every sample goes to the transcript; a kept file the disk cut short is marked on the dictation.
+    private func stopRecorder() -> [Float] {
+        let recorded = recorder.stop()
+        dictation?.audioProblem = recorded.problem
+        return recorded.samples
     }
 
     private func markRecordingEnded() {

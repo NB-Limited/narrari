@@ -71,7 +71,7 @@ public final class DictionaryPageModel {
         case .quiet: nil
         case .firstWordDownloads: "The first word downloads about 100 MB."
         case .preparing(let work): work.label
-        case .failed: VocabularyError.notReady.problem.message
+        case .failed: VocabularyError.notReady.problem.besideRetry
         }
     }
 

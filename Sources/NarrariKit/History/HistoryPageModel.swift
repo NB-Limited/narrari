@@ -33,6 +33,7 @@ public final class HistoryPageModel {
     @ObservationIgnored private let activeDictation: @MainActor () -> UUID?
     @ObservationIgnored private let stopPlayback: @MainActor () -> Void
     @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private var retentionRequests = 0
 
     public init(
         store: HistoryStore,
@@ -131,6 +132,8 @@ public final class HistoryPageModel {
 
     // A shorter time removes older dictations or meeting audio at once, so it asks first when there is any.
     public func requestRetention(_ days: Int, for kind: Kind) async {
+        retentionRequests += 1
+        let request = retentionRequests
         let current = self.days(kind)
         guard days != current else { return }
         pendingRetention = nil
@@ -141,10 +144,13 @@ public final class HistoryPageModel {
             case .dictations: try await store.dictations(olderThan: days, now: now())
             case .meetingAudio: try await MeetingRetention.meetings(olderThan: days, in: meetings, now: now())
             }
+            // A choice made while this one counted is the one that stands.
+            guard request == retentionRequests else { return }
             guard older > 0 else { return apply(days, for: kind) }
             pendingRetention = PendingRetention(kind: kind, days: days, count: older)
         } catch {
             Log.failure("history-count", error: error)
+            guard request == retentionRequests else { return }
             self.error = "The folder could not be read, so the time was not changed. Try again."
         }
     }

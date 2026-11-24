@@ -23,7 +23,7 @@ extension DoctorFacts {
             speech: speech(settings, context.models),
             speechService: settings.value(SpeechSettings.usesRemote) ? .on(host: host(settings.value(SpeechSettings.remoteAddress))) : .off,
             cleanup: cleanup(settings, context.models),
-            meetingModels: MeetingModels.all.map { LocalModel(name: $0.name, bytesOnDisk: (try? context.models.bytesOnDisk(named: $0.folder)) ?? 0) },
+            meetingModels: MeetingModels.all.map { LocalModel(name: $0.name, bytesOnDisk: bytes(of: $0.folder, in: context.models)) },
             dataBytes: try? ModelStore.bytes(in: context.dataFolder),
             history: try? await context.history.usage(),
             meetings: (try? await context.meetings.meetings().meetings).map(Meetings.init),
@@ -119,7 +119,12 @@ extension DoctorFacts {
 
     private static func speech(_ settings: SettingsStore, _ models: ModelStore) -> LocalModel {
         let model = settings.value(SpeechSettings.localModel)
-        return LocalModel(name: model.name, bytesOnDisk: (try? models.bytesOnDisk(named: model.folder)) ?? 0)
+        return LocalModel(name: model.name, bytesOnDisk: models.isPresent(model) ? (try? models.bytesOnDisk(named: model.folder)) ?? 0 : 0)
+    }
+
+    // A model a download left half written reads as not downloaded.
+    private static func bytes(of folder: String, in models: ModelStore) -> Int64 {
+        models.isPresent(named: folder) ? (try? models.bytesOnDisk(named: folder)) ?? 0 : 0
     }
 
     private static func cleanup(_ settings: SettingsStore, _ models: ModelStore) -> Cleanup {

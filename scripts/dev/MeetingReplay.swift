@@ -20,7 +20,7 @@ func meetingReplay(
     let settings = SettingsStore(defaults: defaults)
     let recorder = MeetingRecorder(
         settings: settings,
-        permissions: Permissions(settings: settings, access: InputAccess(isAccessibilityGranted: { true }), microphoneStatus: { .authorized }),
+        permissions: .given(settings),
         inputs: replay, system: replay, freeSpace: MeetingRecorder.volumeFreeSpace, hostNow: { replay.clock.hostTime },
         clock: ContinuousClock()
     )

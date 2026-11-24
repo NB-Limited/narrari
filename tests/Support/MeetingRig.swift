@@ -25,7 +25,7 @@ final class MeetingRig {
         self.replay = replay
         let disk = Disk(free: freeBytes)
         self.disk = disk
-        let permissions = Permissions(settings: settings.store, access: .fixed(), microphoneStatus: { .authorized })
+        let permissions = Permissions.fixed(settings: settings.store)
         session = MeetingSession(
             store: MeetingStore(root: folder.url, trash: { try FileManager.default.removeItem(at: $0) }),
             recorder: MeetingRecorder(

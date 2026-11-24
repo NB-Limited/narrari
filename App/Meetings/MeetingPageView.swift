@@ -66,17 +66,18 @@ struct MeetingPageView: View {
             }
         }
         .onChange(of: page.copyText, initial: true) { _, text in library.shownText = (page.meeting.id, text) }
-        .task(id: page.meeting.id) {
+        // Each change the list reads loads the page again; a load left behind, or by the page leaving, never loads the player.
+        .task(id: listed) {
+            guard listed != nil else { return }
             await page.load()
+            guard !Task.isCancelled else { return }
             context.playback.load(page.audio, expectedDuration: Double(page.meeting.durationMs) / 1000)
         }
-        .onChange(of: library.selected) { _, entry in
-            guard case .meeting(let meeting, _)? = entry, meeting != page.meeting else { return }
-            Task {
-                await page.load()
-                context.playback.load(page.audio, expectedDuration: Double(page.meeting.durationMs) / 1000)
-            }
-        }
+    }
+
+    private var listed: Meeting? {
+        guard case .meeting(let meeting, _)? = library.selected, meeting.id == page.meeting.id else { return nil }
+        return meeting
     }
 
     @ViewBuilder private func head(isRecording: Bool) -> some View {

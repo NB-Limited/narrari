@@ -11,7 +11,7 @@ struct MeetingRecorderTests {
     private let clock = TestClock()
 
     private func recorder(_ replay: Replay, system: (any SystemSoundSource)? = nil) -> MeetingRecorder {
-        let permissions = Permissions(settings: settings.store, access: .fixed(), microphoneStatus: { .authorized })
+        let permissions = Permissions.fixed(settings: settings.store)
         return MeetingRecorder(
             settings: settings.store, permissions: permissions, inputs: replay, system: system ?? replay,
             freeSpace: { [disk] _ in disk.free.load(ordering: .relaxed) }, hostNow: { replay.clock.hostTime }, clock: clock

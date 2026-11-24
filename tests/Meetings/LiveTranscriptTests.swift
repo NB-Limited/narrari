@@ -16,7 +16,7 @@ struct LiveTranscriptTests {
         let replay = replay
         recorder = MeetingRecorder(
             settings: settings.store,
-            permissions: Permissions(settings: settings.store, access: .fixed(), microphoneStatus: { .authorized }),
+            permissions: Permissions.fixed(settings: settings.store),
             inputs: replay, system: replay, freeSpace: { _ in nil }, hostNow: { replay.clock.hostTime }, clock: TestClock()
         )
         live = LiveTranscript(recorder: recorder, speech: recognisers, settings: settings.store)

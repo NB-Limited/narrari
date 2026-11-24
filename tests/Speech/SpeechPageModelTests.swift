@@ -68,6 +68,20 @@ struct SpeechPageModelTests {
         #expect(preview.unloads.arrivals == 0)
     }
 
+    @Test func a_model_a_download_left_half_written_is_offered_for_download_not_shown_on_this_mac() throws {
+        settings.store.set(ParakeetModel.v3, for: SpeechSettings.localModel)
+        let files = ModelStore(root: folder.url).directory(named: ParakeetModel.ultra.folder)
+        try FileManager.default.createDirectory(at: files, withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 4096).write(to: files.appending(path: "Encoder.mlmodelc"))
+        let (page, control) = page()
+
+        control.refreshSize()
+
+        let row = page.row(for: try entry(.ultra, on: page))
+        #expect(row.status == .notDownloaded)
+        #expect(row.group == .toDownload)
+    }
+
     @Test func cancel_puts_the_service_fields_back() {
         let (page, _) = page()
         page.remoteAddress = "https://transcribe.example.com/v1"

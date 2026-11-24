@@ -18,6 +18,17 @@ struct DictationSessionHistoryTests {
         #expect(rig.sounds.played.last == .ignored)
     }
 
+    @Test func audio_the_disk_cut_short_is_marked_on_the_dictation_and_its_text_is_still_pasted() async throws {
+        let rig = SessionRig()
+        rig.recorder.problem = RecorderError.audioWriteFailed.problem
+
+        await rig.dictate()
+
+        let entry = try await rig.onlyEntry()
+        #expect(entry.outcome == .pasted)
+        #expect(entry.audioProblem == RecorderError.audioWriteFailed.problem)
+    }
+
     @Test func history_gets_an_open_line_at_confirm_and_a_final_line_with_the_same_id() async throws {
         let rig = SessionRig()
 

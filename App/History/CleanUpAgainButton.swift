@@ -27,6 +27,12 @@ struct CleanUpAgainButton: View {
         .accessibilityLabel(running ?? Self.name)
         .accessibilityHint(entry.rawText.isEmpty ? Self.nothingHeard : "Replaces the text with the heard text cleaned up by a prompt you choose")
         .iconLabel(running ?? (isDone ? landed.doneLabel : restingLabel), isPinned: running != nil || isDone)
+        .onChange(of: library.work[entry.id]) { old, new in
+            guard old?.state.activity == .cleaningUp, new == nil, let choice = old?.choice else { return }
+            landed = choice
+            done.turnOn(for: Motion.copiedHold)
+            AccessibilityNotification.Announcement(choice.doneLabel).post()
+        }
     }
 
     private var restingLabel: String {
@@ -47,11 +53,6 @@ struct CleanUpAgainButton: View {
 
     private func run(_ choice: CleanupChoice) {
         done.turnOff()
-        Task {
-            guard await library.cleanUp(entry, with: choice) else { return }
-            landed = choice
-            done.turnOn(for: Motion.copiedHold)
-            AccessibilityNotification.Announcement(choice.doneLabel).post()
-        }
+        Task { await library.cleanUp(entry, with: choice) }
     }
 }

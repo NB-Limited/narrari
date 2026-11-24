@@ -86,7 +86,7 @@ struct MediaControlTests {
         let folder = TemporaryFolder()
         let replay = Replay(microphone: speech(seconds: 1), system: speech(seconds: 1))
         let meeting = MeetingRecorder(
-            settings: settings.store, permissions: Permissions(settings: settings.store, access: .fixed(), microphoneStatus: { .authorized }),
+            settings: settings.store, permissions: Permissions.fixed(settings: settings.store),
             inputs: replay, system: replay, freeSpace: { _ in 50_000_000_000 }, hostNow: { replay.clock.hostTime },
             clock: TestClock()
         )
