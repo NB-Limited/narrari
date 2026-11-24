@@ -133,9 +133,7 @@ struct MeetingSpeakersTests {
 
     @Test func people_on_your_side_chosen_split_the_microphone_into_that_many_however_close_or_short() async throws {
         let id = try await meeting(mic: [word("Hello", 0), word("Morning", 22)], system: [word("Budget", 40)])
-        var chosen = try await store.meeting(id)
-        chosen.ownSideCount = 2
-        try await store.save(chosen)
+        try await store.update(id) { $0.ownSideCount = 2 }
         splits.set(["mic.caf": SpeakerSplit(
             turns: [turn("S1", 0, 20), turn("S2", 21, 24)], prints: ["S1": voicePrint(0), "S2": voicePrint(0, distance: 0.1)]
         )])
@@ -213,9 +211,7 @@ struct MeetingSpeakersTests {
     @Test func a_name_given_before_speakers_are_found_goes_to_the_one_heard_most_and_is_remembered() async throws {
         let renaming = SpeakerRenaming(store: store, memory: memory, settings: settings.store)
         let id = try await meeting(mic: [word("Hello", 0)], system: [word("Hi", 1), word("Budget", 12.5), word("is", 13), word("fine", 14)])
-        var before = try await store.meeting(id)
-        before.speakers = [Meeting.Speaker(id: "owner", name: "Ana Petrova"), Meeting.Speaker(id: "others", name: "Speaker 2")]
-        try await store.save(before)
+        try await store.update(id) { $0.speakers = [Meeting.Speaker(id: "owner", name: "Ana Petrova"), Meeting.Speaker(id: "others", name: "Speaker 2")] }
         try await renaming.rename("others", in: id, to: "Boris Ivanov")
         splits.set(["system.caf": SpeakerSplit(
             turns: [turn("S1", 0, 12), turn("S2", 12.2, 24)], prints: ["S1": voicePrint(1), "S2": voicePrint(2)]
@@ -230,9 +226,7 @@ struct MeetingSpeakersTests {
 
     @Test func a_number_of_people_chosen_is_asked_of_the_other_side_only_and_keeps_someone_who_said_little() async throws {
         let id = try await meeting(mic: [word("Hello", 0)], system: [word("Budget", 1), word("Fine", 12.5), word("Yes", 25.2)])
-        var chosen = try await store.meeting(id)
-        chosen.speakerCount = 3
-        try await store.save(chosen)
+        try await store.update(id) { $0.speakerCount = 3 }
         splits.set([
             "mic.caf": SpeakerSplit(turns: [turn("S1", 0, 20)], prints: ["S1": voicePrint(0)]),
             "system.caf": SpeakerSplit(turns: [turn("S1", 0, 12), turn("S2", 12.2, 24), turn("S3", 25, 26)], prints: [:])

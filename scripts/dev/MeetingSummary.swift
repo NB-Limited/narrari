@@ -103,9 +103,7 @@ private func summarise(
     let notes = try await scratch.store.text(.notes, of: meeting.id)
     let source = (meeting.speakers.map(\.name) + meeting.attendees.map(\.name) + [notes] + segments.map(\.text)).joined(separator: "\n")
     let transcriptWords = segments.reduce(0) { $0 + $1.text.split(separator: " ").count }
-    var chosen = meeting
-    chosen.template = template.id
-    try await scratch.store.save(chosen)
+    try await scratch.store.update(meeting.id) { [id = template.id] in $0.template = id }
     try await scratch.store.write("", to: .summary, of: meeting.id)
     let peak = PeakMemory()
     let watcher = Task {

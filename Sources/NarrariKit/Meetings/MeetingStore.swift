@@ -73,8 +73,7 @@ public actor MeetingStore {
     }
 
     // While the meeting records its folder keeps its name; the title it was given is applied when it stops.
-    public func save(_ meeting: Meeting) throws {
-        let (folder, stored) = try locate(meeting.id)
+    private func save(_ meeting: Meeting, over stored: Meeting, in folder: URL) throws {
         try write(meeting, in: folder)
         changed.yield()
         if stored.speakers != meeting.speakers { try writeTranscriptText(in: folder, speakers: meeting.speakers) }
@@ -188,11 +187,14 @@ public actor MeetingStore {
         try writeText(text, to: try locate(id).folder.appending(path: document.rawValue))
     }
 
-    // Read and saved in one go, so two changes made at once never undo each other.
-    public func update(_ id: UUID, _ change: @Sendable (inout Meeting) -> Void) throws {
-        var meeting = try locate(id).meeting
-        change(&meeting)
-        try save(meeting)
+    // The only way a meeting.json changes: read and saved in one go, so a change made meanwhile is never written over.
+    @discardableResult
+    public func update<Result: Sendable>(_ id: UUID, _ change: @Sendable (inout Meeting) throws -> Result) throws -> Result {
+        let (folder, stored) = try locate(id)
+        var meeting = stored
+        let result = try change(&meeting)
+        if meeting != stored { try save(meeting, over: stored, in: folder) }
+        return result
     }
 
     // At launch: a cut-off import is a partial copy, so it goes; a cut-off recording keeps what its tracks hold.
@@ -207,7 +209,7 @@ public actor MeetingStore {
             var recovered = meeting
             recovered.state = .recovered
             recovered.durationMs = Self.recordedMilliseconds(in: folder)
-            try save(recovered)
+            try save(recovered, over: meeting, in: folder)
             Log.event("meeting-recovered")
         }
     }

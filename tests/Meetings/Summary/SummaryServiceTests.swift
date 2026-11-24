@@ -340,6 +340,31 @@ struct SummaryServiceTests {
         #expect(try await store.text(.summary, of: id) == Self.summary)
     }
 
+    // Someone who dictates every few seconds still gets one: the third push back waits only for that dictation to end.
+    @Test(.timeLimit(.minutes(1))) func a_summary_pushed_back_three_times_runs_to_its_end_through_the_next_dictation() async throws {
+        let id = try await meeting()
+        let held = Gate()
+        let engine = FakeCleanupEngine(gate: held) { _ in Self.summary }
+
+        let run = Task { [processing = processing(service(FakeSummaryEngines(engine)))] in await processing.process(id) }
+        for push in 1...3 {
+            await held.waitForArrivals(push)
+            dictation.set(true)
+            await held.waitForStops(push)
+            dictation.set(false)
+            guard push < 3 else { continue }
+            await clock.waitForSleeper(until: clock.now.advanced(by: .seconds(30)))
+            clock.advance(by: .seconds(30))
+        }
+        await held.waitForArrivals(4)
+        dictation.set(true)
+        held.open()
+        await run.value
+
+        #expect(try await step(id) == Meeting.Step(.done))
+        #expect(try await store.text(.summary, of: id) == Self.summary)
+    }
+
     // The page writes both to the meeting before the run, so a run after a quit reads the same choice.
     @Test func redo_uses_the_template_and_model_written_to_the_meeting_and_keeps_the_summary_it_replaces() async throws {
         let id = try await meeting()
@@ -353,10 +378,10 @@ struct SummaryServiceTests {
         let processing = processing(service)
         await processing.process(id)
 
-        var chosen = try await store.meeting(id)
-        chosen.template = "one-to-one"
-        chosen.summaryModel = "mlx-community/Qwen3.5-4B-MLX-4bit"
-        try await store.save(chosen)
+        try await store.update(id) { meeting in
+            meeting.template = "one-to-one"
+            meeting.summaryModel = "mlx-community/Qwen3.5-4B-MLX-4bit"
+        }
 
         await processing.retry(.summary, of: id)
 

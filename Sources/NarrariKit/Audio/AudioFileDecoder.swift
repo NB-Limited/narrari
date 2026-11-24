@@ -38,7 +38,7 @@ public enum AudioFileDecoder {
             samples += block.count
         }
         let seconds = Double(samples) / SpeechAudio.sampleRate
-        writer.finish(at: seconds)
+        try writer.finish(at: seconds)
         return seconds
     }
 

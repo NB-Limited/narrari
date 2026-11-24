@@ -91,7 +91,7 @@ public final class Paster {
     }
 
     public func paste(_ text: String) async -> PasteOutcome {
-        if access.isAccessibilityGranted() { await waitForModifiersUp() }
+        let keysUp = access.isAccessibilityGranted() ? await waitForModifiersUp() : true
         await finishRestore()
         let early = saved
         saved = nil
@@ -113,7 +113,7 @@ public final class Paster {
             PasteboardEntry(type: Self.transientType, data: Data()),
             PasteboardEntry(type: Self.concealedType, data: Data())
         ]])
-        guard postPaste() else {
+        guard keysUp, postPaste() else {
             Log.failure("paste-keystroke")
             pasteboard.replace(with: [[textEntry]])
             return .copiedKeystrokeFailed
@@ -128,14 +128,18 @@ public final class Paster {
         return .pasted
     }
 
-    // Keys still held from a shortcut would join Command V, and the app in front would ignore it.
-    private func waitForModifiersUp() async {
+    // Keys still held from a shortcut would join Command V, and the app in front would ignore it. False when they stay held.
+    private func waitForModifiersUp() async -> Bool {
         var polls = 0
-        while access.modifiersHeld(), polls < Self.modifierPolls {
+        while access.modifiersHeld() {
+            guard polls < Self.modifierPolls else {
+                Log.event("paste-modifiers-still-held")
+                return false
+            }
             try? await clock.sleep(for: Self.modifierPoll)
             polls += 1
         }
-        if polls == Self.modifierPolls { Log.event("paste-modifiers-still-held") }
+        return true
     }
 
     // A second paste waiting here may find a newer restore scheduled by the first, so it waits for that one too.

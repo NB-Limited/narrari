@@ -1,8 +1,10 @@
 import Foundation
 
 // Dictation has the model first: a dictation stops a running summary, which starts again after 30 seconds without one.
+// After three such pushes back it waits only for the dictation in progress, then runs to its end, so it always finishes.
 public final class SummaryService: MeetingStep {
     static let quietBeforeStart: Duration = .seconds(30)
+    static let mostPushes = 3
 
     private let templates: SummaryTemplateFolder
     private let engines: any SummaryEngines
@@ -128,31 +130,38 @@ public final class SummaryService: MeetingStep {
     private func dictationFirst<Value: Sendable>(
         _ id: UUID, in store: MeetingStore, _ work: @escaping @Sendable () async throws -> Value
     ) async throws -> Value {
-        if await isDictating() { try await waitForQuiet(id, in: store) }
-        while true {
+        var pushes = 0
+        if await isDictating() { try await waitForQuiet(id, in: store, pushes: &pushes) }
+        while pushes < Self.mostPushes {
             let turn: Turn<Value> = try await first(
                 { .written(try await work()) },
                 { [self] in await nextDictation() ? .dictation : nil }
             )
             guard case .written(let value) = turn else {
                 Log.event("meeting-summary-gave-way")
-                try await waitForQuiet(id, in: store)
+                pushes += 1
+                try await waitForQuiet(id, in: store, pushes: &pushes)
                 continue
             }
             return value
         }
+        Log.event("meeting-summary-kept-going")
+        return try await work()
     }
 
-    private func waitForQuiet(_ id: UUID, in store: MeetingStore) async throws {
+    // Each dictation that cuts the quiet short pushes the summary back once more; past the most, the quiet is not waited for.
+    private func waitForQuiet(_ id: UUID, in store: MeetingStore, pushes: inout Int) async throws {
         try await mark(id, in: store, Meeting.Step(.waiting, for: .dictation))
         var isQuiet = false
         while !isQuiet {
             for await busy in dictation.updates() where !busy { break }
             try Task.checkCancellation()
+            guard pushes < Self.mostPushes else { break }
             isQuiet = try await first(
                 { [clock] in try await clock.sleep(for: Self.quietBeforeStart); return true },
                 { [self] in await nextDictation() ? false : nil }
             )
+            if !isQuiet { pushes += 1 }
         }
         try await mark(id, in: store, Meeting.Step(.running, since: .now))
     }

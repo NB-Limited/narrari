@@ -140,7 +140,7 @@ public final class MeetingSurfaces {
         "Call ended, stopping in \(secondsLeft) s"
     }
 
-    // A start that failed, a stop for a full disk and live text stopping each show once, for as long as a dictation's notice.
+    // A start that failed, a stop for a full disk or one not saved, and live text stopping each show once, for as long as a dictation's notice.
     private func followNotices() {
         let now = withObservationTracking {
             (problem: session.problem, liveText: session.liveText?.notice)

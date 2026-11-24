@@ -93,7 +93,7 @@ public actor MeetingProcessing {
             let problems = AudioFileError.allCases.map(\.problem) + TranscriberError.allCases.map(\.problem)
                 + SummaryError.allCases.map(\.problem) + SummaryTemplateError.allCases.map(\.problem)
                 + MeetingSpeakers.Failure.allCases.map(\.problem) + MeetingError.allCases.map(\.problem) + allCases.map(\.failure)
-                + [TimeLimitExceeded().problem, AudioModelError.notDownloaded.problem]
+                + TrackWriterError.allCases.map(\.problem) + [TimeLimitExceeded().problem, AudioModelError.notDownloaded.problem]
             return Dictionary(problems.map { ($0.code, $0) }) { first, _ in first }
         }()
     }

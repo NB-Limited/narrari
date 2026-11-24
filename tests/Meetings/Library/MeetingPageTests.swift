@@ -103,6 +103,28 @@ struct MeetingPageTests {
         #expect(page.speakerCountTitle == "People on the other side" && page.hasCallTrack)
     }
 
+    @Test func notes_that_cannot_be_saved_say_so_and_stay_in_the_field_until_a_save_works() async throws {
+        let meeting = Meeting(title: "Delivery plan", startedAt: .now, app: "", source: .call, template: "general", state: .ready)
+        let meetingFolder = try await store.create(meeting, appName: "Zoom")
+        let page = await page(meeting)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: meetingFolder.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: meetingFolder.path) }
+
+        page.setNotes("Send the plan by Friday.")
+        await page.notesSaved()
+        let problem = page.notesProblem
+        await page.load()
+        let shown = page.notes
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: meetingFolder.path)
+        page.setNotes("Send the plan by Friday. Book the room.")
+        await page.notesSaved()
+
+        #expect(problem?.message == "Your notes could not be saved. They stay here; type again to try once more.")
+        #expect(shown == "Send the plan by Friday.")
+        #expect(page.notesProblem == nil)
+        #expect(try await store.text(.notes, of: meeting.id) == "Send the plan by Friday. Book the room.")
+    }
+
     @Test func the_language_reads_as_detected_until_one_is_chosen_which_keeps_the_transcript() async throws {
         let page = await page(try await processed())
         let detected = page.languageLine

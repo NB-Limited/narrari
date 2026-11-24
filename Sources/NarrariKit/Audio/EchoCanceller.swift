@@ -29,6 +29,6 @@ public struct EchoCanceller: Sendable {
             write(try await stream.enhance(mic: block, reference: reference))
         }
         write(try await stream.flush())
-        writer.finish(at: Double(heard.sampleCount) / SpeechAudio.sampleRate)
+        try writer.finish(at: Double(heard.sampleCount) / SpeechAudio.sampleRate)
     }
 }

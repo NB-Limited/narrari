@@ -40,18 +40,22 @@ public struct SpeakerRenaming: Sendable {
     // The person and every print of their voice go; past meetings keep their name as plain text.
     public func forget(_ person: UUID) async throws {
         try await memory.delete(person)
-        for var meeting in try await store.meetings().meetings
+        for meeting in try await store.meetings().meetings
         where meeting.speakers.contains(where: { $0.personId == person || $0.suggestion == person }) {
-            var voices = try await store.voices(of: meeting.id)
-            for index in meeting.speakers.indices {
-                if meeting.speakers[index].personId == person {
-                    voices[meeting.speakers[index].id] = nil
-                    meeting.speakers[index].personId = nil
+            let unnamed = try await store.update(meeting.id) { meeting in
+                var unnamed: [String] = []
+                for index in meeting.speakers.indices {
+                    if meeting.speakers[index].personId == person {
+                        unnamed.append(meeting.speakers[index].id)
+                        meeting.speakers[index].personId = nil
+                    }
+                    if meeting.speakers[index].suggestion == person { meeting.speakers[index].suggestion = nil }
                 }
-                if meeting.speakers[index].suggestion == person { meeting.speakers[index].suggestion = nil }
+                return unnamed
             }
+            var voices = try await store.voices(of: meeting.id)
+            unnamed.forEach { voices[$0] = nil }
             try await store.write(voices: voices, of: meeting.id)
-            try await store.save(meeting)
         }
     }
 
@@ -64,10 +68,11 @@ public struct SpeakerRenaming: Sendable {
     // The user's changes made again, in order, after the speakers step split the meeting anew. A name given before any
     // split was on everyone else as one speaker, so it goes to `others`, the one of them heard most, as if chosen now.
     func replay(in meeting: UUID, others: String?) async throws {
-        var changed = try await store.meeting(meeting)
-        let edits = changed.speakerEdits
-        changed.speakerEdits.removeAll { $0.speaker == MeetingTranscript.othersID }
-        try await store.save(changed)
+        let edits = try await store.update(meeting) { changed in
+            let edits = changed.speakerEdits
+            changed.speakerEdits.removeAll { $0.speaker == MeetingTranscript.othersID }
+            return edits
+        }
         let people = Set(try await memory.people().map(\.id))
         for edit in edits {
             if edit.speaker == MeetingTranscript.othersID {
@@ -108,14 +113,16 @@ public struct SpeakerRenaming: Sendable {
 
     @discardableResult
     private func combine(_ speaker: String, into other: String, in meeting: UUID) async throws -> Bool {
-        var changed = try await store.meeting(meeting)
-        guard speaker != other, changed.speakers.contains(where: { $0.id == speaker }), changed.speakers.contains(where: { $0.id == other })
-        else { return false }
-        changed.speakers.removeAll { $0.id == speaker }
+        let combined = try await store.update(meeting) { changed in
+            guard speaker != other, changed.speakers.contains(where: { $0.id == speaker }), changed.speakers.contains(where: { $0.id == other })
+            else { return false }
+            changed.speakers.removeAll { $0.id == speaker }
+            return true
+        }
+        guard combined else { return false }
         var voices = try await store.voices(of: meeting)
         voices[speaker] = nil
         try await store.write(voices: voices, of: meeting)
-        try await store.save(changed)
         let segments = try await store.transcript(of: meeting).map { segment in
             var moved = segment
             if moved.speaker == speaker { moved.speaker = other }
@@ -132,21 +139,21 @@ public struct SpeakerRenaming: Sendable {
 
     // A speaker's newest name or "not this person" replaces the one before, so an old name is never taught again.
     private func record(_ edit: Meeting.SpeakerEdit, in meeting: UUID) async throws {
-        var changed = try await store.meeting(meeting)
-        if case .merged = edit.change {} else {
-            changed.speakerEdits.removeAll { old in
-                if case .merged = old.change { return false }
-                return old.speaker == edit.speaker
+        try await store.update(meeting) { changed in
+            if case .merged = edit.change {} else {
+                changed.speakerEdits.removeAll { old in
+                    if case .merged = old.change { return false }
+                    return old.speaker == edit.speaker
+                }
             }
+            changed.speakerEdits.append(edit)
         }
-        changed.speakerEdits.append(edit)
-        try await store.save(changed)
     }
 
     private func set(_ speaker: String, in meeting: UUID, name: String, person: UUID?, byUser: Bool) async throws {
-        var changed = try await store.meeting(meeting)
-        guard let index = changed.speakers.firstIndex(where: { $0.id == speaker }) else { return }
-        changed.speakers[index] = Meeting.Speaker(id: speaker, name: name, personId: person, isNamedByUser: byUser ? true : nil)
-        try await store.save(changed)
+        try await store.update(meeting) { changed in
+            guard let index = changed.speakers.firstIndex(where: { $0.id == speaker }) else { return }
+            changed.speakers[index] = Meeting.Speaker(id: speaker, name: name, personId: person, isNamedByUser: byUser ? true : nil)
+        }
     }
 }

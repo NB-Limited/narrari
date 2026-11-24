@@ -24,7 +24,7 @@ public actor ParakeetLiveSpeech: LiveSpeech {
     public func load() async throws {
         guard models == nil else { return }
         let model = settings.value(SpeechSettings.localModel)
-        guard store.isPresent(named: model.folder) else { throw TranscriberError.notDownloaded }
+        guard store.isPresent(model) else { throw TranscriberError.notDownloaded }
         models = try await AsrModels.downloadAndLoad(to: store.directory(named: model.folder), version: model.version)
     }
 

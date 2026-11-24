@@ -49,34 +49,33 @@ struct MeetingStoreTests {
     }
 
     @Test func title_given_while_recording_renames_the_folder_only_when_the_meeting_stops() async throws {
-        var recording = meeting("", state: .recording)
+        let recording = meeting("", state: .recording)
         try await store.create(recording, appName: "Zoom")
 
-        recording.title = "Weekly sync"
-        try await store.save(recording)
+        try await store.update(recording.id) { $0.title = "Weekly sync" }
         #expect(try names(in: store.root.appending(path: "Zoom")) == ["2026-11-19 0930"])
 
-        recording.state = .ready
-        recording.durationMs = 1_800_000
-        try await store.save(recording)
+        let stopped = try await store.update(recording.id) { meeting in
+            meeting.state = .ready
+            meeting.durationMs = 1_800_000
+            return meeting
+        }
         #expect(try names(in: store.root.appending(path: "Zoom")) == ["2026-11-19 0930 Weekly sync"])
-        #expect(try await store.meetings().meetings == [recording])
+        #expect(try await store.meetings().meetings == [stopped])
 
-        recording.title = "Weekly Sync"
-        try await store.save(recording)
+        try await store.update(recording.id) { $0.title = "Weekly Sync" }
         #expect(try names(in: store.root.appending(path: "Zoom")) == ["2026-11-19 0930 Weekly sync"])
         #expect(try await store.meetings().meetings.map(\.title) == ["Weekly Sync"])
     }
 
     @Test func rewrite_keeps_keys_a_later_version_added() async throws {
-        var saved = meeting("Standup")
+        let saved = meeting("Standup")
         let url = try await store.create(saved, appName: "Zoom").appending(path: "meeting.json")
         var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         json["mood"] = ["calm": true, "score": 3]
         try JSONSerialization.data(withJSONObject: json).write(to: url)
 
-        saved.pinned = true
-        try await store.save(saved)
+        try await store.update(saved.id) { $0.pinned = true }
 
         let written = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         #expect(written["v"] as? Int == 1)
@@ -120,7 +119,7 @@ struct MeetingStoreTests {
         try JSONSerialization.data(withJSONObject: json).write(to: url)
 
         let read = try await store.meeting(saved.id)
-        try await store.save(read)
+        try await store.update(saved.id) { $0.pinned = true }
         let rewritten = try String(contentsOf: url, encoding: .utf8)
 
         #expect(read.steps.speakers == Meeting.Step(.waiting, for: .speakerModel))
@@ -150,10 +149,9 @@ struct MeetingStoreTests {
     }
 
     @Test func meeting_cut_off_while_recording_comes_back_recovered_under_its_title() async throws {
-        var cutOff = meeting("", state: .recording)
+        let cutOff = meeting("", state: .recording)
         try await store.create(cutOff, appName: "Zoom")
-        cutOff.title = "Client call"
-        try await store.save(cutOff)
+        try await store.update(cutOff.id) { $0.title = "Client call" }
 
         try await store.recover()
 
@@ -203,8 +201,7 @@ struct MeetingStoreTests {
         ]
 
         try await store.write(segments, of: saved.id)
-        saved.speakers[1].name = "Anna"
-        try await store.save(saved)
+        try await store.update(saved.id) { $0.speakers[1].name = "Anna" }
 
         #expect(try await store.transcript(of: saved.id) == segments)
         #expect(try String(contentsOf: url.appending(path: "transcript.md"), encoding: .utf8) == """

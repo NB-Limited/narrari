@@ -19,6 +19,8 @@ public final class CleanupEngineSlot {
     @ObservationIgnored private var holders = 0
     @ObservationIgnored private var isResting = false
     @ObservationIgnored private var idleUnload: Task<Void, Never>?
+    // Each swap waits for the one before, so an engine let go is never loaded after it.
+    @ObservationIgnored private var swapping: Task<Void, Never>?
 
     private static let followedKeys: Set<String> = [
         CleanupSettings.engine.key, CleanupSettings.localModel.key, CleanupSettings.chatAddress.key,
@@ -73,7 +75,9 @@ public final class CleanupEngineSlot {
             return slot
         }
         stopIdleUnload()
-        Task { [weak self] in
+        let before = swapping
+        swapping = Task { [weak self] in
+            await before?.value
             await previous?.unload()
             try? await next?.load()
             self?.unloadWhenIdle()

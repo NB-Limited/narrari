@@ -236,12 +236,13 @@ public struct SystemAudioInputs: AudioInputs {
     }
 }
 
+// The audio thread holds the lock only to copy samples in: it never allocates or logs there, so main never waits on either.
 private final class CaptureSink: Sendable {
     private struct State {
         var file: ExtAudioFileRef?
         var resampler: Resampler
         var samples = SampleBlocks()
-        // Kept to dispose at finish, because disposing waits on the disk.
+        // Kept to dispose at finish, because disposing waits on the disk; the failure is logged then, off the audio thread.
         var failedFile: ExtAudioFileRef?
         var isOpen = true
         var firstSampleTime: TimeInterval?
@@ -253,10 +254,15 @@ private final class CaptureSink: Sendable {
     private let heardSound = Atomic<Bool>(false)
     private let onFirstSound: @Sendable () -> Void
 
-    init(writingTo url: URL, sampleRate: Double, onFirstSound: @escaping @Sendable () -> Void) throws {
-        guard let resampler = Resampler(from: sampleRate) else { throw RecorderError.noInput }
+    // Devices hand over 512 frames or fewer at a time in practice; a larger buffer still converts, allocating once.
+    private static let largestDeviceBuffer = 4_096
 
-        state = Mutex(State(file: try Self.file(at: url), resampler: resampler))
+    init(writingTo url: URL, sampleRate: Double, onFirstSound: @escaping @Sendable () -> Void) throws {
+        guard var resampler = Resampler(from: sampleRate) else { throw RecorderError.noInput }
+        resampler.prepare(frames: Self.largestDeviceBuffer)
+        var samples = SampleBlocks()
+        samples.makeRoom()
+        state = Mutex(State(file: try Self.file(at: url), resampler: resampler, samples: samples))
         self.onFirstSound = onFirstSound
     }
 
@@ -272,23 +278,26 @@ private final class CaptureSink: Sendable {
     }
 
     func retarget(to sampleRate: Double) -> Bool {
-        state.withLock { $0.resampler.retarget(to: sampleRate) }
+        state.withLock { state in
+            guard state.resampler.retarget(to: sampleRate) else { return false }
+            state.resampler.prepare(frames: Self.largestDeviceBuffer)
+            return true
+        }
     }
 
     func consume(_ samples: UnsafeBufferPointer<Float>, hostTime: UInt64) {
-        state.withLock { state in
-            guard state.isOpen else { return }
+        let needsRoom = state.withLock { state -> Bool in
+            guard state.isOpen else { return false }
             if state.firstSampleTime == nil {
                 state.firstSampleTime = hostTime != 0
                     ? AVAudioTime.seconds(forHostTime: hostTime) : ProcessInfo.processInfo.systemUptime
             }
-            guard let target = state.resampler.input(frames: samples.count) else { return }
+            guard let target = state.resampler.input(frames: samples.count) else { return false }
             for (index, sample) in samples.enumerated() { target[index] = sample }
-            guard let output = state.resampler.convert(), let channel = output.floatChannelData?[0] else { return }
+            guard let output = state.resampler.convert(), let channel = output.floatChannelData?[0] else { return false }
             if let file = state.file, ExtAudioFileWriteAsync(file, output.frameLength, output.audioBufferList) != noErr {
                 state.failedFile = file
                 state.file = nil
-                Log.failure("audio-file-write")
             }
             let converted = UnsafeBufferPointer(start: channel, count: Int(output.frameLength))
             state.samples.append(contentsOf: converted)
@@ -297,7 +306,12 @@ private final class CaptureSink: Sendable {
             if SoundLevel.isSound(decibels), heardSound.compareExchange(expected: false, desired: true, ordering: .relaxed).exchanged {
                 onFirstSound()
             }
+            return !state.samples.hasRoom
         }
+        guard needsRoom else { return }
+        var room = SampleBlocks.Block()
+        room.reserveCapacity(SampleBlocks.blockSize)
+        state.withLock { $0.samples.take(room) }
     }
 
     var level: Float {
@@ -309,7 +323,12 @@ private final class CaptureSink: Sendable {
     }
 
     func recentSamples(_ count: Int) -> [Float] {
-        state.withLock { $0.samples.suffix(count) }
+        var tail: [Float] = []
+        tail.reserveCapacity(count)
+        return state.withLock { state in
+            state.samples.copySuffix(count, into: &tail)
+            return tail
+        }
     }
 
     var firstSampleTime: TimeInterval? {
@@ -317,26 +336,51 @@ private final class CaptureSink: Sendable {
     }
 
     func finish() -> [Float] {
-        state.withLock { state in
+        let (files, failed, resampler, samples) = state.withLock { state in
             state.isOpen = false
-            for file in [state.file, state.failedFile].compactMap(\.self) { ExtAudioFileDispose(file) }
-            state.file = nil
-            state.failedFile = nil
-            return state.samples
-        }.all
+            defer {
+                state.file = nil
+                state.failedFile = nil
+                state.samples = SampleBlocks()
+            }
+            return ([state.file, state.failedFile].compactMap(\.self), state.failedFile != nil, state.resampler, state.samples)
+        }
+        files.forEach { ExtAudioFileDispose($0) }
+        if failed { Log.failure("audio-file-write") }
+        if resampler.hasFailed { Log.failure("audio-convert", error: resampler.failure) }
+        return samples.all
     }
 }
 
 // Fixed one-second blocks: one array growing by doubling copied everything it held on the IO thread, up to 14 ms at 26 minutes.
 private struct SampleBlocks {
-    private static let blockSize = Int(SpeechAudio.sampleRate)
-    private var blocks: [[Float]] = []
+    typealias Block = [Float]
+
+    static let blockSize = Int(SpeechAudio.sampleRate)
+    private static let listedBlocks = 3_600
+    private var blocks: [Block] = []
+    private var next: Block?
+
+    // The next block is made outside the lock and handed in, so the IO thread never allocates one.
+    mutating func makeRoom() {
+        blocks.reserveCapacity(Self.listedBlocks)
+        var first = Block()
+        first.reserveCapacity(Self.blockSize)
+        next = first
+    }
+
+    var hasRoom: Bool { next != nil }
+
+    mutating func take(_ block: Block) {
+        next = block
+    }
 
     mutating func append(contentsOf samples: UnsafeBufferPointer<Float>) {
         var rest = samples[...]
         while !rest.isEmpty {
             if blocks.last.map({ $0.count == Self.blockSize }) ?? true {
-                blocks.append([])
+                blocks.append(next ?? Block())
+                next = nil
                 blocks[blocks.count - 1].reserveCapacity(Self.blockSize)
             }
             let taken = rest.prefix(Self.blockSize - blocks[blocks.count - 1].count)
@@ -345,19 +389,21 @@ private struct SampleBlocks {
         }
     }
 
-    func suffix(_ count: Int) -> [Float] {
-        guard count > 0, var start = blocks.indices.last else { return [] }
+    func copySuffix(_ count: Int, into tail: inout [Float]) {
+        guard count > 0, var start = blocks.indices.last else { return }
         var held = blocks[start].count
         while start > 0, held < count {
             start -= 1
             held += blocks[start].count
         }
-        var tail: [Float] = []
-        tail.reserveCapacity(min(held, count))
         tail.append(contentsOf: blocks[start].dropFirst(max(held - count, 0)))
         for block in blocks[(start + 1)...] { tail.append(contentsOf: block) }
-        return tail
     }
 
-    var all: [Float] { suffix(.max) }
+    var all: [Float] {
+        var tail: [Float] = []
+        tail.reserveCapacity(blocks.reduce(0) { $0 + $1.count })
+        copySuffix(.max, into: &tail)
+        return tail
+    }
 }
