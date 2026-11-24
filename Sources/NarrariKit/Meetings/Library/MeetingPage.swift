@@ -47,6 +47,8 @@ public final class MeetingPage {
     public private(set) var audio: [URL] = []
     public private(set) var redoing: MeetingProcessing.Step?
     public private(set) var detectedLanguage: String?
+    // Set while the notes typed last are not on disk; they stay in the field.
+    public private(set) var notesProblem: Problem?
     public var tab: Tab
 
     @ObservationIgnored private let store: MeetingStore
@@ -196,12 +198,14 @@ public final class MeetingPage {
     public func setNotes(_ text: String) {
         notes = text
         let previous = saving
-        saving = Task { [store, id = meeting.id] in
+        saving = Task { [weak self, store, id = meeting.id] in
             await previous?.value
             do {
                 try await store.write(text, to: .notes, of: id)
+                self?.notesProblem = nil
             } catch {
                 Log.failure("meeting-notes-save", error: error)
+                self?.notesProblem = error.problem(or: Self.notesNotSaved)
             }
         }
     }
@@ -348,6 +352,8 @@ public final class MeetingPage {
             atPath: microphone.deletingLastPathComponent().appending(path: MeetingStore.Audio.cleanedMicrophone.rawValue).path
         )
     }
+
+    static let notesNotSaved = Problem("meeting.notes-not-saved", "Your notes could not be saved. They stay here; type again to try once more.")
 
     nonisolated static func name(_ step: MeetingProcessing.Step) -> String {
         switch step {

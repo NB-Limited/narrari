@@ -259,7 +259,15 @@ private struct NotesField: View {
     )
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.control)
+        VStack(alignment: .leading, spacing: 0) {
+            plate
+            if let problem = page.notesProblem {
+                FormError(message: problem.message).padding(.top, ControlMetrics.errorGap)
+            }
+        }
+    }
+
+    private var plate: some View {
         ZStack(alignment: .topLeading) {
             if page.notes.isEmpty {
                 Text("Type notes. The summary uses them.")
@@ -281,7 +289,7 @@ private struct NotesField: View {
         .frame(minHeight: MeetingWindowMetrics.notesMinHeight, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
         .padding(Self.platePadding)
-        .background(Color.windowGround, in: shape)
+        .background(Color.windowGround, in: RoundedRectangle(cornerRadius: Radius.control))
         .focusRing(isFocused)
         .onAppear { if isFocusedFirst { isFocused = true } }
     }
