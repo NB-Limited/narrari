@@ -2,8 +2,12 @@
 import FluidAudio
 import Foundation
 
-public enum AudioModelError: Error, Equatable {
+public enum AudioModelError: ProblemError, Equatable {
     case notDownloaded
+
+    public var problem: Problem {
+        Problem("audio-model.not-downloaded", "A meeting model is not downloaded. It downloads by itself; try again once it has.", canRetry: true)
+    }
 }
 
 // The small models a meeting uses besides speech: speech detection, which the echo check reads, echo removal and the speaker split.

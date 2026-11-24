@@ -54,11 +54,9 @@ extension DictationSession {
             return heard
         } catch is TimeLimitExceeded {
             Log.event("transcription-timed-out")
-            show(.transcriptionFailed)
-        } catch TranscriberError.modelUnavailable {
-            show(.modelUnavailable)
+            show(.speech(.transcriptionFailed))
         } catch {
-            show(.transcriptionFailed)
+            show(.speech(error as? TranscriberError ?? .transcriptionFailed))
         }
         return nil
     }

@@ -181,7 +181,7 @@ struct MeetingSurfacesTests {
 
         await full.session.start()
 
-        await until { surfaces.pill == .notice(.lowDisk) }
+        await until { surfaces.pill == .notice(.failed(MeetingRecorderError.lowDisk.problem)) }
         #expect(!surfaces.pillTakesClicks)
         await clock.waitForSleepers(1)
         clock.advance(by: .milliseconds(2_500))
@@ -197,7 +197,7 @@ struct MeetingSurfacesTests {
         meeting.replay.play(seconds: 6)
 
         await until { surfaces.pill == .notice(.stoppedForLowDisk) }
-        #expect(MeetingNotice.stoppedForLowDisk.message == "Stopped: the disk is nearly full")
+        #expect(MeetingNotice.stoppedForLowDisk.message == "Recording stopped: the disk is nearly full. Free some space.")
         await clock.waitForSleepers(1)
         clock.advance(by: .milliseconds(2_500))
         await until { surfaces.pill == nil }

@@ -44,22 +44,7 @@ extension DictationSession {
     }
 
     func microphoneFailed(_ error: any Error) {
-        switch error as? RecorderError {
-        case .microphoneDenied:
-            Log.failure("start-microphone-denied")
-            show(.microphoneDenied)
-        case .microphoneAccessRequested:
-            Log.failure("start-microphone-access-requested")
-            show(.microphoneAccessRequested)
-        case .noInput:
-            Log.failure("start-microphone-no-input")
-            show(.microphoneUnavailable)
-        case .startFailed:
-            Log.failure("start-microphone-failed")
-            show(.microphoneUnavailable)
-        case nil:
-            Log.failure("start-microphone-unknown", error: error)
-            show(.microphoneUnavailable)
-        }
+        Log.failure("start-microphone", error: error)
+        show(.microphone(error as? RecorderError ?? .startFailed))
     }
 }

@@ -5,15 +5,11 @@ public enum Notice: Sendable, Equatable {
     case copiedKeystrokeFailed
     case nothingToPaste
     case nothingHeard
-    case microphoneDenied
-    case microphoneAccessRequested
-    case microphoneUnavailable
+    case microphone(RecorderError)
     case microphoneDisconnected
     case microphoneSwitched(String?)
-    case modelUnavailable
-    case modelFailed
+    case speech(TranscriberError)
     case discarded
-    case transcriptionFailed
     case cleanupOn
     case cleanupOff
     case mode(String)
@@ -26,15 +22,11 @@ public enum Notice: Sendable, Equatable {
         case .copiedKeystrokeFailed: "Could not paste. Press ⌘V instead."
         case .nothingToPaste: "No dictation to paste"
         case .nothingHeard: "Nothing heard"
-        case .microphoneDenied: "Microphone access is off in System Settings"
-        case .microphoneAccessRequested: "Allow microphone access, then try again"
-        case .microphoneUnavailable: "The microphone could not start"
+        case .microphone(let error): error.problem.message
         case .microphoneDisconnected: "Microphone disconnected. Transcribing the rest."
         case .microphoneSwitched(let name): "Switched to \(name ?? "another microphone")"
-        case .modelUnavailable: "Speech model unavailable. The audio is kept."
-        case .modelFailed: "The speech model could not load"
+        case .speech(let error): error.problem.message
         case .discarded: "Discarded. The audio is kept."
-        case .transcriptionFailed: "Transcription failed. The audio is kept."
         case .cleanupOn: "Clean-up on for this dictation"
         case .cleanupOff: "Clean-up off for this dictation"
         case .mode(let name): name
@@ -46,9 +38,9 @@ public enum Notice: Sendable, Equatable {
     // An error stays until the next dictation; any other notice fades.
     public var isError: Bool {
         switch self {
-        case .microphoneDenied, .microphoneUnavailable, .microphoneDisconnected,
-             .modelUnavailable, .modelFailed, .transcriptionFailed: true
-        case .copiedAccessibilityOff, .copiedKeystrokeFailed, .nothingToPaste, .nothingHeard, .microphoneAccessRequested,
+        case .microphone(let error): error != .microphoneAccessRequested
+        case .microphoneDisconnected, .speech: true
+        case .copiedAccessibilityOff, .copiedKeystrokeFailed, .nothingToPaste, .nothingHeard,
              .microphoneSwitched, .discarded, .cleanupOn, .cleanupOff, .mode, .cleanupSkipped, .speechFallback: false
         }
     }

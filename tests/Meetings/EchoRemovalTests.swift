@@ -92,7 +92,7 @@ struct EchoRemovalTests {
         let id = try await newMeeting(echoLevel: 0.25)
         let missing = EchoRemoval(findSpeech: { _ in throw AudioModelError.notDownloaded }, cancel: { _, _, _ in })
 
-        await #expect(throws: MeetingStepWaiting("Waiting for the echo removal models to be downloaded.")) {
+        await #expect(throws: MeetingStepWaiting.echoModels) {
             try await missing.run(id, in: store)
         }
         try FileManager.default.removeItem(at: try await store.audio(.system, of: id))

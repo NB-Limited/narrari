@@ -40,7 +40,7 @@ struct DoctorReportTests {
         func meeting(_ title: String, state: Meeting.State = .ready, done: Int = 0, failing: Bool = false) -> Meeting {
             var meeting = Meeting(title: title, startedAt: .now, app: "", source: .call, template: "general", state: state)
             for step in [\Meeting.Steps.echo, \.transcript, \.speakers, \.summary].prefix(done) { meeting.steps[keyPath: step] = .init(.done) }
-            if failing { meeting.steps.summary = .init(.failed, reason: "The chat service refused.") }
+            if failing { meeting.steps.summary = .init(.failed, problem: SummaryError.modelFailed.problem.code) }
             return meeting
         }
         facts.meetings = .init([

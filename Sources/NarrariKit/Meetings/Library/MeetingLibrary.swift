@@ -135,7 +135,7 @@ public final class MeetingLibrary {
         let steps = MeetingProcessing.Step.allCases.map { ($0, meeting.steps[$0]) }
         if let running = steps.first(where: { $0.1.status == .running }) { return .working(MeetingPage.working(running.0)) }
         if let failed = steps.first(where: { $0.1.status == .failed }) { return .failed(Self.failure(failed.0)) }
-        let needed = steps.filter { $0.1.status == .waiting }.flatMap { MeetingStepWaiting.models(for: $0.1.reason) }
+        let needed = steps.filter { $0.1.status == .waiting }.flatMap { $0.1.waiting?.models ?? [] }
         if needed.contains(where: { if case .downloading = models.status(of: $0) { true } else { false } }) { return .working("Downloading") }
         if meeting.state != .recording, steps.contains(where: { $0.1.status != .done }) { return .processing }
         return nil
@@ -249,13 +249,17 @@ public final class MeetingLibrary {
                 meeting.state = .ready
                 try await store.save(meeting)
             } catch {
-                try? await store.delete(meeting.id)
+                do {
+                    try await store.delete(meeting.id)
+                } catch {
+                    Log.failure("meeting-import-discard", error: error)
+                }
                 throw error
             }
             Log.event("meeting-imported")
         } catch {
             Log.failure("meeting-import", error: error)
-            importError = (error as? AudioFileError)?.message ?? "The recording could not be read."
+            importError = error.problem(or: Self.importFailed).message
             return
         }
         await refresh()
@@ -294,6 +298,8 @@ public final class MeetingLibrary {
     private static func newestFirst(_ first: Entry, _ second: Entry) -> Bool {
         first.date > second.date
     }
+
+    static let importFailed = Problem("meeting.import-failed", "The recording could not be imported. Try again.", canRetry: true)
 
     static func failure(_ step: MeetingProcessing.Step) -> String {
         switch step {

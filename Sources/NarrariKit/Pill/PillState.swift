@@ -20,9 +20,9 @@ public struct PillLabel: Sendable, Equatable {
         case .copiedAccessibilityOff: "accessibility"
         case .nothingHeard: "waveform.slash"
         case .copiedKeystrokeFailed, .nothingToPaste: "exclamationmark.circle"
-        case .microphoneAccessRequested, .microphoneSwitched: "mic.fill"
-        case .microphoneDenied, .microphoneUnavailable, .microphoneDisconnected: "mic.slash.fill"
-        case .modelUnavailable, .modelFailed, .transcriptionFailed: "exclamationmark.triangle.fill"
+        case .microphone(.microphoneAccessRequested), .microphoneSwitched: "mic.fill"
+        case .microphone, .microphoneDisconnected: "mic.slash.fill"
+        case .speech: "exclamationmark.triangle.fill"
         case .discarded: "trash"
         case .cleanupOn: "text.badge.checkmark"
         case .cleanupOff: "text.badge.xmark"
@@ -71,8 +71,8 @@ public struct PillState: Sendable, Equatable {
 extension PillLabel {
     public init(_ notice: MeetingNotice) {
         switch notice {
-        case .refused(let refusal): self.init(refusal)
-        case .lowDisk, .stoppedForLowDisk, .failed: self.init(symbol: "exclamationmark.triangle.fill", text: notice.message, isError: true)
+        case .refused(let refusal): self.init(.microphone(refusal))
+        case .stoppedForLowDisk, .failed: self.init(symbol: "exclamationmark.triangle.fill", text: notice.message, isError: true)
         case .liveText: self.init(symbol: "exclamationmark.circle", text: notice.message)
         }
     }

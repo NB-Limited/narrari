@@ -119,7 +119,7 @@ private func summarise(
     do {
         try await service.run(meeting.id, in: scratch.store)
     } catch {
-        outcome = "refused: \(error.localizedDescription)"
+        outcome = "refused: \(error.problem(or: MeetingProcessing.Step.summary.failure).code)"
     }
     let elapsed = seconds(since: start)
     watcher.cancel()

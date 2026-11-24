@@ -1,7 +1,11 @@
 import Foundation
 
-public enum MeetingError: Error, Equatable {
+public enum MeetingError: ProblemError, Equatable, CaseIterable {
     case notFound
+
+    public var problem: Problem {
+        Problem("meeting.not-found", "This meeting was deleted, so the work on it stopped.")
+    }
 }
 
 // One folder of plain files per meeting, at <root>/<folder>/<yyyy-MM-dd HHmm> <title>/.

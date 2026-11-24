@@ -75,10 +75,22 @@ struct MeetingProcessingTests {
         speakers.outcome.withLock { $0 = nil }
         await processing.retry(.speakers, of: id)
 
-        #expect(afterFailure.speakers.status == .failed && afterFailure.speakers.reason != nil)
+        #expect(afterFailure.speakers.status == .failed && afterFailure.speakers.problem != nil)
         #expect(afterFailure.summary == Meeting.Step(.done))
         #expect(names == ["echo", "transcript", "speakers", "summary", "speakers"])
         #expect(try await steps(id).speakers == Meeting.Step(.done))
+    }
+
+    @Test func a_step_failing_with_an_error_of_no_problem_stores_its_steps_code_and_shows_its_fixed_message() async throws {
+        let id = try await newMeeting()
+        let echo = FakeStep("echo", runs: runs, failing: CocoaError(.fileReadCorruptFile))
+        let processing = MeetingProcessing(store: store, echo: echo, transcript: FakeStep("transcript", runs: runs))
+
+        await processing.process(id)
+
+        let failed = try await steps(id).echo
+        #expect(failed == Meeting.Step(.failed, problem: "meeting.echo-failed"))
+        #expect(MeetingProcessing.Step.echo.problem(failed.problem) == Problem("meeting.echo-failed", "Echo removal failed. Try again.", canRetry: true))
     }
 
     @Test func try_again_while_the_meeting_is_processed_waits_at_once_and_runs_after_the_step_under_way() async throws {
@@ -131,7 +143,7 @@ struct MeetingProcessingTests {
 
     @Test func a_step_waiting_for_a_model_keeps_its_reason_and_what_needs_it_waits_until_it_is_done() async throws {
         let id = try await newMeeting()
-        let echo = FakeStep("echo", runs: runs, failing: MeetingStepWaiting("Waiting for the echo removal models to be downloaded."))
+        let echo = FakeStep("echo", runs: runs, failing: MeetingStepWaiting.echoModels)
         let processing = MeetingProcessing(
             store: store, echo: echo, transcript: FakeStep("transcript", runs: runs), summary: FakeStep("summary", runs: runs)
         )
@@ -141,9 +153,9 @@ struct MeetingProcessingTests {
         echo.outcome.withLock { $0 = nil }
         await processing.process(id)
 
-        #expect(waiting.echo == Meeting.Step(.waiting, reason: "Waiting for the echo removal models to be downloaded."))
-        #expect(waiting.transcript == Meeting.Step(.waiting, reason: "Waiting for echo removal."))
-        #expect(waiting.summary == Meeting.Step(.waiting, reason: "Waiting for the transcript."))
+        #expect(waiting.echo == Meeting.Step(.waiting, for: .echoModels))
+        #expect(waiting.transcript == Meeting.Step(.waiting, for: .echoRemoval))
+        #expect(waiting.summary == Meeting.Step(.waiting, for: .transcript))
         #expect(names == ["echo", "echo", "transcript", "summary"])
         #expect(try await steps(id).summary == Meeting.Step(.done))
     }
@@ -155,7 +167,7 @@ private final class NeedsCleanupModel: MeetingStep {
     let passes = Gate.counter()
 
     func run(_ id: UUID, in store: MeetingStore) async throws {
-        guard isOnThisMac.withLock({ $0 }) else { throw MeetingStepWaiting("Waiting for the clean-up model to be downloaded.") }
+        guard isOnThisMac.withLock({ $0 }) else { throw MeetingStepWaiting.cleanupModel }
         try await passes.pass()
     }
 }
@@ -166,7 +178,7 @@ private struct NeedsSpeakerModel: MeetingStep {
 
     func run(_ id: UUID, in store: MeetingStore) async throws {
         guard models.isPresent(named: AudioModel.speakerSplit.folder) else {
-            throw MeetingStepWaiting("Waiting for the speaker model to be downloaded.")
+            throw MeetingStepWaiting.speakerModel
         }
     }
 }
@@ -254,7 +266,7 @@ struct MeetingProcessingModelTests {
 
         await summary.passes.waitForPasses(1)
 
-        #expect(waiting == Meeting.Step(.waiting, reason: "Waiting for the clean-up model to be downloaded."))
+        #expect(waiting == Meeting.Step(.waiting, for: .cleanupModel))
     }
 
     @Test func a_failed_download_holds_back_only_its_step_and_trying_again_finishes_it() async throws {
@@ -269,7 +281,7 @@ struct MeetingProcessingModelTests {
         fetch.isFailing.withLock { $0 = false }
         await processing.process(id)
 
-        #expect(afterFailure.speakers == Meeting.Step(.waiting, reason: "Waiting for the speaker model to be downloaded."))
+        #expect(afterFailure.speakers == Meeting.Step(.waiting, for: .speakerModel))
         #expect(afterFailure.summary == Meeting.Step(.done))
         #expect(try await store.meeting(id).steps.speakers == Meeting.Step(.done))
     }
@@ -279,7 +291,7 @@ struct MeetingProcessingModelTests {
         var meeting = try await store.meeting(id)
         meeting.steps.echo = Meeting.Step(.done)
         meeting.steps.transcript = Meeting.Step(.done)
-        meeting.steps.speakers = Meeting.Step(.waiting, reason: "Waiting for the speaker model to be downloaded.")
+        meeting.steps.speakers = Meeting.Step(.waiting, for: .speakerModel)
         try await store.save(meeting)
         let library = MeetingModels(store: models, fetch: FakeModelFetch(store: models).fetch)
 

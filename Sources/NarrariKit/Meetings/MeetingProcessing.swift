@@ -22,27 +22,40 @@ public protocol MeetingModelSupply: Sendable {
     func download(_ models: [NeededModel]) async -> Bool
 }
 
-public struct MeetingStepWaiting: Error, Equatable {
-    public let reason: String
+// What a waiting step waits for, stored in meeting.json by its raw value.
+public enum MeetingStepWaiting: String, Error, Codable, Sendable {
+    case speechModel = "speech-model"
+    case echoModels = "echo-models"
+    case speakerModel = "speaker-model"
+    case cleanupModel = "cleanup-model"
+    case echoRemoval = "echo-removal"
+    case transcript
+    case dictation
 
-    public init(_ reason: String) {
-        self.reason = reason
+    // The models to download for a step waiting for this.
+    var models: [NeededModel] {
+        switch self {
+        case .speechModel: [.speech]
+        case .echoModels: [.meeting(.speechDetection), .meeting(.echoRemoval)]
+        case .speakerModel: [.meeting(.speakerSplit)]
+        case .cleanupModel: [.cleanup]
+        case .echoRemoval, .transcript, .dictation: []
+        }
     }
 
-    static let speechModel = Self("Waiting for the speech model to be downloaded.")
-    static let echoModels = Self("Waiting for the echo removal models to be downloaded.")
-    static let speakerModel = Self("Waiting for the speaker model to be downloaded.")
-    static let cleanupModel = Self("Waiting for the clean-up model to be downloaded.")
-
-    // The models to download for a step waiting with this reason.
-    static func models(for reason: String?) -> [NeededModel] {
-        switch reason {
-        case speechModel.reason: [.speech]
-        case echoModels.reason: [.meeting(.speechDetection), .meeting(.echoRemoval)]
-        case speakerModel.reason: [.meeting(.speakerSplit)]
-        case cleanupModel.reason: [.cleanup]
-        default: []
-        }
+    // Files written before the codes kept the sentence the page showed.
+    init?(sentence: String) {
+        let sentences: [String: Self] = [
+            "Waiting for the speech model to be downloaded.": .speechModel,
+            "Waiting for the echo removal models to be downloaded.": .echoModels,
+            "Waiting for the speaker model to be downloaded.": .speakerModel,
+            "Waiting for the clean-up model to be downloaded.": .cleanupModel,
+            "Waiting for echo removal.": .echoRemoval,
+            "Waiting for the transcript.": .transcript,
+            "Waiting for dictation to finish.": .dictation
+        ]
+        guard let waiting = sentences[sentence] else { return nil }
+        self = waiting
     }
 }
 
@@ -63,13 +76,35 @@ public actor MeetingProcessing {
             }
         }
 
-        var waitingReason: String? {
+        var waitingFor: MeetingStepWaiting? {
             switch self {
-            case .echo: "Waiting for echo removal."
-            case .transcript: "Waiting for the transcript."
+            case .echo: .echoRemoval
+            case .transcript: .transcript
             case .speakers, .summary: nil
             }
         }
+
+        public var failure: Problem {
+            switch self {
+            case .echo: Problem("meeting.echo-failed", "Echo removal failed. Try again.", canRetry: true)
+            case .transcript: Problem("meeting.transcript-failed", "The transcript could not be written. Try again.", canRetry: true)
+            case .speakers: Problem("meeting.speakers-failed", "Speakers could not be told apart. Try again.", canRetry: true)
+            case .summary: Problem("meeting.summary-failed", "The summary could not be written. Try again.", canRetry: true)
+            }
+        }
+
+        // A code this version does not know, such as one from a later version, reads as the step's own failure.
+        public func problem(_ code: String?) -> Problem {
+            code.flatMap { Self.stored[$0] } ?? failure
+        }
+
+        private static let stored: [String: Problem] = {
+            let problems = AudioFileError.allCases.map(\.problem) + TranscriberError.allCases.map(\.problem)
+                + SummaryError.allCases.map(\.problem) + SummaryTemplateError.allCases.map(\.problem)
+                + MeetingSpeakers.Failure.allCases.map(\.problem) + MeetingError.allCases.map(\.problem) + allCases.map(\.failure)
+                + [TimeLimitExceeded().problem, AudioModelError.notDownloaded.problem]
+            return Dictionary(problems.map { ($0.code, $0) }) { first, _ in first }
+        }()
     }
 
     private let store: MeetingStore
@@ -118,7 +153,7 @@ public actor MeetingProcessing {
     public func carryOn() async {
         do {
             for meeting in try await store.meetings().meetings where meeting.state != .recording && Step.allCases.contains(where: {
-                meeting.steps[$0].status == .waiting && !MeetingStepWaiting.models(for: meeting.steps[$0].reason).isEmpty
+                meeting.steps[$0].status == .waiting && !(meeting.steps[$0].waiting?.models ?? []).isEmpty
             }) {
                 await process(meeting.id)
             }
@@ -147,7 +182,7 @@ public actor MeetingProcessing {
                 let steps = try await store.meeting(id).steps
                 guard steps[step].status != .done, steps[step].status != .failed else { continue }
                 if let input = step.input, steps[input].status != .done {
-                    try await mark(step, of: id, Meeting.Step(.waiting, reason: input.waitingReason))
+                    try await mark(step, of: id, Meeting.Step(.waiting, for: input.waitingFor))
                     continue
                 }
                 guard let worker = workers[step] else {
@@ -183,7 +218,7 @@ public actor MeetingProcessing {
     private func run(_ worker: any MeetingStep, _ step: Step, of id: UUID) async throws -> Meeting.Step {
         try await mark(step, of: id, Meeting.Step(.running, since: .now))
         let outcome = await attempt(worker, step, of: id)
-        let needed = MeetingStepWaiting.models(for: outcome.reason)
+        let needed = outcome.waiting?.models ?? []
         guard outcome.status == .waiting, !needed.isEmpty, let models else { return outcome }
         await models.begin(needed)
         try await mark(step, of: id, outcome)
@@ -199,12 +234,12 @@ public actor MeetingProcessing {
             Self.logTiming(step, (ContinuousClock.now - start) / .seconds(1))
             return Meeting.Step(.done)
         } catch let waiting as MeetingStepWaiting {
-            return Meeting.Step(.waiting, reason: waiting.reason)
+            return Meeting.Step(.waiting, for: waiting)
         } catch is CancellationError {
             return Meeting.Step(.waiting)
         } catch {
             Log.failure("meeting-step", error: error)
-            return Meeting.Step(.failed, reason: (error as? AudioFileError)?.message ?? error.localizedDescription)
+            return Meeting.Step(.failed, problem: error.problem(or: step.failure).code)
         }
     }
 

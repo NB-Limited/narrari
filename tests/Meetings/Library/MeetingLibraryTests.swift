@@ -65,7 +65,7 @@ struct MeetingLibraryTests {
 
     @Test func a_meeting_waiting_for_a_model_reads_downloading_while_it_downloads() async throws {
         var meeting = try await saved("Weekly", in: "Zoom", hour: 0)
-        meeting.steps.speakers = Meeting.Step(.waiting, reason: "Waiting for the speaker model to be downloaded.")
+        meeting.steps.speakers = Meeting.Step(.waiting, for: .speakerModel)
         let before = library.state(of: meeting)
 
         models.begin([AudioModel.speakerSplit])

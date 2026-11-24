@@ -251,7 +251,11 @@ public final class MeetingSession: MeetingPresence {
             do {
                 try recorder.start(in: folder)
             } catch {
-                try? await store.delete(meeting.id)
+                do {
+                    try await store.delete(meeting.id)
+                } catch {
+                    Log.failure("meeting-start-discard", error: error)
+                }
                 throw error
             }
             if live == .paused { recorder.pause() }

@@ -38,14 +38,21 @@ public enum ModelState: Sendable, Equatable {
     case missing
     case preparing(fraction: Double, isDownloading: Bool = false)
     case ready
-    case failed(reason: String)
+    case failed(Problem)
 }
 
-public enum TranscriberError: Error, Equatable {
-    case modelUnavailable(reason: String)
-    case transcriptionFailed(reason: String)
+public enum TranscriberError: ProblemError, Equatable, CaseIterable {
+    case notDownloaded
+    case modelUnavailable
+    case transcriptionFailed
 
-    public static let notDownloaded = TranscriberError.modelUnavailable(reason: "the speech model is not downloaded")
+    public var problem: Problem {
+        switch self {
+        case .notDownloaded: Problem("speech.not-downloaded", "No speech model yet. Download one in Settings, Speech.", canRetry: true)
+        case .modelUnavailable: Problem("speech.model-unavailable", "The speech model did not load. Try again in Settings, Speech.", canRetry: true)
+        case .transcriptionFailed: Problem("speech.failed", "Transcription failed. Try again; the audio is kept.", canRetry: true)
+        }
+    }
 }
 
 public protocol Transcriber: Sendable {

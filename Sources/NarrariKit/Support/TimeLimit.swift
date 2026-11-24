@@ -1,6 +1,8 @@
 import Foundation
 
-public struct TimeLimitExceeded: Error, Equatable {}
+public struct TimeLimitExceeded: ProblemError, Equatable {
+    public var problem: Problem { Problem("time-limit", "This took too long. Try again.", canRetry: true) }
+}
 
 func withTimeLimit<Value: Sendable>(
     _ limit: Duration,

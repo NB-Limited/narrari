@@ -18,8 +18,14 @@ public enum Log {
         logger.notice("event \(name.description, privacy: .public)")
     }
 
+    // An error without a problem logs its domain and number, which are fixed; never its description, which can hold a path or a name.
     public static func failure(_ kind: StaticString, error: (any Error)? = nil) {
         let type = error.map { String(reflecting: Swift.type(of: $0)) } ?? "none"
-        logger.error("failure \(kind.description, privacy: .public) \(type, privacy: .public)")
+        let detail = switch error {
+        case nil: ""
+        case let error as any ProblemError: " \(error.problem.code)" + (error.status.map { " status \($0)" } ?? "")
+        case let error?: " \((error as NSError).domain) \((error as NSError).code)"
+        }
+        logger.error("failure \(kind.description, privacy: .public) \(type, privacy: .public)\(detail, privacy: .public)")
     }
 }

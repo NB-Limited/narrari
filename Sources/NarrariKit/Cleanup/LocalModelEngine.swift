@@ -74,7 +74,7 @@ public actor LocalModelEngine: CleanupEngine {
             throw error
         } catch {
             Log.failure("cleanup-generate", error: error)
-            throw CleanupEngineError.generationFailed(reason: error.localizedDescription)
+            throw CleanupEngineError.generationFailed()
         }
         guard !reply.isCutOff else {
             Log.event("cleanup-reply-cut-off")
@@ -103,7 +103,7 @@ public actor LocalModelEngine: CleanupEngine {
         do {
             thinkingOff = try reasoning?.promptStrategy.additionalContext(forThinkingEnabled: false)
         } catch {
-            throw CleanupEngineError.generationFailed(reason: "\(name) cannot switch off its reasoning")
+            throw CleanupEngineError.generationFailed()
         }
 
         let tokenizer = await container.tokenizer
@@ -163,7 +163,7 @@ public actor LocalModelEngine: CleanupEngine {
         }
 
         if let reasoning, reply.contains(reasoning.startDelimiter) || reply.contains(reasoning.endDelimiter) {
-            throw CleanupEngineError.generationFailed(reason: "\(name) replied with its reasoning")
+            throw CleanupEngineError.generationFailed()
         }
         return (reply, info.stopReason == .length)
     }
@@ -211,9 +211,9 @@ public actor LocalModelEngine: CleanupEngine {
             } catch {
                 if Task.isCancelled { throw CancellationError() }
                 Log.failure("cleanup-model-load", error: error)
-                let reason = error.localizedDescription
-                report(.failed(reason: reason))
-                throw CleanupEngineError.modelUnavailable(reason: reason)
+                let failure = error as? CleanupEngineError ?? .modelUnavailable
+                report(.failed(failure.problem))
+                throw failure
             }
         }
         loading = task

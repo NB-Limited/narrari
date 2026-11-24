@@ -66,14 +66,14 @@ extension MeetingPage {
         }
         if let before = earlier(own) { return "Comes after \(Self.phrase(before))." }
         let state = meeting.steps[own]
-        let needed = MeetingStepWaiting.models(for: state.reason)
+        let needed = state.waiting?.models ?? []
         return switch state.status {
         case .done where segments.isEmpty && meeting.steps.transcript.status == .done: "No speech was heard."
         case .done: own == .summary && SummaryRequest.isTooShort(segments) ? "Too short to summarise. The transcript holds every word." : nil
         case .running: own == .speakers ? "Speakers are being found." : "The \(Self.name(own).lowercased()) is being written."
         case .failed: own == .speakers ? "Speakers could not be told apart." : "The \(Self.name(own).lowercased()) could not be written."
         case .waiting where !needed.isEmpty: "Waits for the \(Self.phrase(needed))."
-        case .waiting where state.reason == SummaryService.waitingReason: "Waits for dictation to finish."
+        case .waiting where state.waiting == .dictation: "Waits for dictation to finish."
         case .waiting: own == .speakers ? "Speakers are not found yet." : "Not written yet."
         }
     }
@@ -98,14 +98,18 @@ extension MeetingPage {
 
     private func row(_ step: MeetingProcessing.Step) -> StepRow {
         let state = meeting.steps[step]
-        let needed = state.status == .waiting ? MeetingStepWaiting.models(for: state.reason) : []
+        let needed = state.status == .waiting ? state.waiting?.models ?? [] : []
         if !needed.isEmpty { return modelRow(step, needed) }
         return switch state.status {
         case .done: StepRow(step, look: .done, status: step == .echo && !hasCleanedTrack ? "Not needed" : "Done")
         case .running: runningRow(step, since: state.since)
-        case .failed: StepRow(step, look: .failed, status: state.reason ?? "Failed", action: .retry)
-        case .waiting: StepRow(step, look: .waiting, status: Self.waiting(state.reason))
+        case .failed: failedRow(step, step.problem(state.problem))
+        case .waiting: StepRow(step, look: .waiting, status: Self.waiting(state.waiting))
         }
+    }
+
+    private func failedRow(_ step: MeetingProcessing.Step, _ problem: Problem) -> StepRow {
+        StepRow(step, look: .failed, status: problem.message, action: problem.canRetry ? .retry : nil)
     }
 
     private func runningRow(_ step: MeetingProcessing.Step, since: Date?) -> StepRow {
@@ -166,12 +170,13 @@ extension MeetingPage {
         }
     }
 
-    private static func waiting(_ reason: String?) -> String {
-        switch reason {
-        case MeetingProcessing.Step.echo.waitingReason: "Waits for echo removal"
-        case MeetingProcessing.Step.transcript.waitingReason: "Waits for the transcript"
-        case let reason?: reason
-        case nil: "Waiting"
+    private static func waiting(_ waiting: MeetingStepWaiting?) -> String {
+        switch waiting {
+        case .echoRemoval: "Waits for echo removal"
+        case .transcript: "Waits for the transcript"
+        case .dictation: "Waiting for dictation to finish."
+        // A step waiting for a model shows its download instead.
+        case .speechModel, .echoModels, .speakerModel, .cleanupModel, nil: "Waiting"
         }
     }
 }

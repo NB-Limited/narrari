@@ -107,6 +107,29 @@ struct MeetingStoreTests {
         #expect(read.soundNotes == ["Other people's sound was not recorded."])
     }
 
+    @Test func steps_saved_with_their_sentence_still_wait_for_the_same_thing_and_are_rewritten_with_codes() async throws {
+        let saved = meeting("Standup")
+        let url = try await store.create(saved, appName: "Zoom").appending(path: "meeting.json")
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        json["steps"] = try JSONSerialization.jsonObject(with: Data(#"""
+            {"echo": {"status": "done"},
+             "transcript": {"status": "failed", "reason": "The operation couldn’t be completed. (NarrariKit.TranscriberError error 1.)"},
+             "speakers": {"status": "waiting", "reason": "Waiting for the speaker model to be downloaded."},
+             "summary": {"status": "waiting", "reason": "Waiting for dictation to finish."}}
+            """#.utf8))
+        try JSONSerialization.data(withJSONObject: json).write(to: url)
+
+        let read = try await store.meeting(saved.id)
+        try await store.save(read)
+        let rewritten = try String(contentsOf: url, encoding: .utf8)
+
+        #expect(read.steps.speakers == Meeting.Step(.waiting, for: .speakerModel))
+        #expect(read.steps.summary == Meeting.Step(.waiting, for: .dictation))
+        #expect(read.steps.transcript == Meeting.Step(.failed))
+        #expect(MeetingProcessing.Step.transcript.problem(read.steps.transcript.problem).message == "The transcript could not be written. Try again.")
+        #expect(!rewritten.contains("reason") && rewritten.contains(#""speaker-model""#))
+    }
+
     @Test func folder_without_a_readable_meeting_json_is_listed_apart_and_left_as_it_is() async throws {
         let broken = store.root.appending(path: "Zoom/2026-11-18 1000 Broken")
         let future = store.root.appending(path: "Zoom/2026-11-18 1100 Future")

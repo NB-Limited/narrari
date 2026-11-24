@@ -1,7 +1,11 @@
 import Foundation
 
-public enum HistoryError: Error, Equatable {
+public enum HistoryError: ProblemError, Equatable {
     case entryGone
+
+    public var problem: Problem {
+        Problem("history.entry-gone", "This dictation was deleted, so the new text was not kept.")
+    }
 }
 
 public actor HistoryStore {

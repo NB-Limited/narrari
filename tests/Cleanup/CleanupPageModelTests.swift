@@ -26,7 +26,7 @@ struct CleanupPageModelTests {
         page.chatAddress = "https://api.example.com/v1"
         page.chatAddress = "http://api.example.com/v1"
 
-        #expect(page.addressError == ServiceAddressError.notHTTPS.message)
+        #expect(page.addressError == ServiceAddressError.notHTTPS.problem.message)
         #expect(settings.store.value(CleanupSettings.chatAddress) == "https://api.example.com/v1")
     }
 

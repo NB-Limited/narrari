@@ -1,9 +1,22 @@
 import Foundation
 
-public enum RemoteTranscriberError: Error, Equatable {
+public enum RemoteTranscriberError: ProblemError, Equatable {
     case overLimit(bytes: Int, limit: Int)
     case timedOut
-    case serviceFailed(reason: String)
+    case serviceFailed(status: Int? = nil)
+
+    public var problem: Problem {
+        switch self {
+        case .overLimit: Problem("remote-speech.over-limit", "The audio is too large for the outside service. Transcribe it on this Mac.")
+        case .timedOut: Problem("remote-speech.timed-out", "The outside service took too long. Try again.", canRetry: true)
+        case .serviceFailed: Problem("remote-speech.failed", "The outside service failed. Check its address and key in Settings, Speech.", canRetry: true)
+        }
+    }
+
+    public var status: Int? {
+        if case .serviceFailed(let status) = self { return status }
+        return nil
+    }
 }
 
 public struct RemoteTranscriber: Transcriber {
@@ -118,13 +131,13 @@ public struct RemoteTranscriber: Transcriber {
             reply = try await OutsideService.send(request, with: session)
         } catch {
             Log.failure("remote-transcribe-request", error: error)
-            throw RemoteTranscriberError.serviceFailed(reason: "the speech service could not be reached")
+            throw RemoteTranscriberError.serviceFailed()
         }
         guard (200..<300).contains(reply.status) else {
-            throw RemoteTranscriberError.serviceFailed(reason: "the speech service answered with status \(reply.status)")
+            throw RemoteTranscriberError.serviceFailed(status: reply.status)
         }
         guard let decoded = try? JSONDecoder().decode(TranscriptionReply.self, from: reply.data) else {
-            throw RemoteTranscriberError.serviceFailed(reason: "the speech reply has no text")
+            throw RemoteTranscriberError.serviceFailed()
         }
         return decoded.text
     }

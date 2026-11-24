@@ -71,7 +71,7 @@ public final class DictionaryPageModel {
         case .quiet: nil
         case .firstWordDownloads: "The first word downloads about 100 MB."
         case .gettingReady(let fraction): "Getting ready, \(MetricText.percent(fraction))"
-        case .failed: "Could not get ready for these words. Clean-up still sees them."
+        case .failed: VocabularyError.notReady.problem.message
         }
     }
 
