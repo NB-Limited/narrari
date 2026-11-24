@@ -32,7 +32,8 @@ func meetingModels(_ scratch: ScratchMeetings) async throws {
     }
 }
 
-// Runs every step on each meeting in the scratch folder, as the app would after a meeting ends.
+// Runs every step on each meeting in the scratch folder, as the app would after a meeting ends, the summary with the clean-up model.
+@MainActor
 func meetingProcess(_ scratch: ScratchMeetings) async throws {
     let pipeline = TextPipeline(
         cleanup: CleanupService(engine: nil, settings: scratch.settings), prompts: PromptStore(root: scratch.data),
@@ -40,6 +41,12 @@ func meetingProcess(_ scratch: ScratchMeetings) async throws {
     )
     let transcription = FileTranscription(store: scratch.models, settings: scratch.settings, dictionary: DictionaryStore(root: scratch.data))
     let echo = EchoRemoval(models: scratch.models)
+    let slot = CleanupEngineSlot(settings: scratch.settings, keychain: NoKeys(), store: scratch.models)
+    let summary = SummaryService(
+        templates: SummaryTemplateFolder(url: scratch.data.appending(path: "Templates"), builtIns: SummaryTemplateFolder.bundled),
+        engines: CleanupSummaryEngines(slot: slot, settings: scratch.settings, keychain: NoKeys(), store: scratch.models),
+        dictation: NoDictation(), settings: scratch.settings, clock: ContinuousClock()
+    )
     let processing = MeetingProcessing(
         store: scratch.store, echo: echo,
         transcript: MeetingTranscript(
@@ -48,7 +55,8 @@ func meetingProcess(_ scratch: ScratchMeetings) async throws {
         ),
         speakers: MeetingSpeakers(
             models: scratch.models, memory: VoiceMemory(folder: scratch.data), pipeline: pipeline, settings: scratch.settings, ownerName: "Owner"
-        )
+        ),
+        summary: summary
     )
     for meeting in try await scratch.store.meetings().meetings {
         let peak = PeakMemory()
