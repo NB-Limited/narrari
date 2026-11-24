@@ -7,6 +7,7 @@ public enum HistoryError: Error, Equatable {
 public actor HistoryStore {
     public nonisolated let root: URL
     private let calendar: Calendar
+    private var cache: (stamps: [String: FileStamp], scan: Scan)?
 
     private static let newline = UInt8(ascii: "\n")
     private static let audioExtension = "caf"
@@ -33,6 +34,7 @@ public actor HistoryStore {
         line.append(Self.newline)
         let url = dayFileURL(for: entry.startedAt)
         let manager = FileManager.default
+        let before = FileStamp(url)
         try makeRoot()
         if !manager.fileExists(atPath: url.path) {
             // The file holds dictated text, so only the owner may read it.
@@ -41,15 +43,34 @@ public actor HistoryStore {
             }
         }
         let handle = try FileHandle(forUpdating: url)
+        let end: UInt64
         do {
             // A crash can leave a last line without its newline; start a fresh line so only that one line is lost.
             if try endsMidLine(handle) { line.insert(Self.newline, at: 0) }
             try handle.write(contentsOf: line)
+            end = try handle.offset()
         } catch {
             try? handle.close()
+            cache = nil
             throw error
         }
         try handle.close()
+        remember(entry, appendedTo: url, before: before, bytes: line.count, end: Int64(end))
+    }
+
+    // The new line is applied to what was read, unless anyone else wrote to the file since it was read or during this write.
+    private func remember(_ entry: HistoryEntry, appendedTo url: URL, before: FileStamp?, bytes: Int, end: Int64) {
+        let name = url.lastPathComponent
+        guard var cache, cache.stamps[name] == before, (before?.size ?? 0) + Int64(bytes) == end,
+              let after = FileStamp(url), after.size == end else {
+            cache = nil
+            return
+        }
+        // Let go of the stored copy first, so the lists change in place instead of being copied.
+        self.cache = nil
+        cache.stamps[name] = after
+        if cache.scan.add(entry, from: name) { cache.scan.place(entry) }
+        self.cache = cache
     }
 
     // Where new audio for this entry is written, with the folder made if it has gone.
@@ -66,8 +87,7 @@ public actor HistoryStore {
 
     public func entries() throws -> (entries: [HistoryEntry], skipped: Int) {
         let scan = try scan()
-        let live = scan.latest.values.filter { !$0.isDeleted }
-        return (live.sorted { $0.startedAt > $1.startedAt }, scan.skipped)
+        return (scan.live, scan.skipped)
     }
 
     // Appends only while the entry's newest line exists and is not a deletion, so a late result never revives it.
@@ -163,6 +183,7 @@ public actor HistoryStore {
 
     // Removes a day file, or rewrites it in one step down to the lines of the dictations kept.
     private func remove(dayFile url: URL, keeping kept: Set<UUID>) throws {
+        cache = nil
         let lines = kept.isEmpty ? [] : try Data(contentsOf: url).split(separator: Self.newline).filter { line in
             (try? HistoryEntry(jsonLine: Data(line))).map { kept.contains($0.id) } ?? false
         }
@@ -183,18 +204,43 @@ public actor HistoryStore {
         var latest: [UUID: HistoryEntry] = [:]
         var audioNames: Set<String> = []
         var skipped = 0
+        // The day file each latest line came from: files are read in name order, so a later file wins.
+        var files: [UUID: String] = [:]
+        var live: [HistoryEntry] = []
+
+        mutating func add(_ entry: HistoryEntry, from file: String) -> Bool {
+            audioNames.insert(entry.audioFile)
+            if let held = files[entry.id], held > file { return false }
+            latest[entry.id] = entry
+            files[entry.id] = file
+            return true
+        }
+
+        mutating func sortLive() {
+            live = latest.values.filter { !$0.isDeleted }.sorted { $0.startedAt > $1.startedAt }
+        }
+
+        mutating func place(_ entry: HistoryEntry) {
+            live.removeAll { $0.id == entry.id }
+            guard !entry.isDeleted else { return }
+            live.insert(entry, at: live.firstIndex { $0.startedAt <= entry.startedAt } ?? live.count)
+        }
     }
 
+    // Every .jsonl is stamped, a few more than are read, so a check needs no date parsed from a name.
     private func scan() throws -> Scan {
+        let stamps = Dictionary(try contents().filter { $0.pathExtension == Self.dayFileExtension }.compactMap { url in
+            FileStamp(url).map { (url.lastPathComponent, $0) }
+        }) { first, _ in first }
+        if let cache, cache.stamps == stamps { return cache.scan }
         var scan = Scan()
         for (url, _) in try dayFiles() {
             let parsed = try parse(url)
             scan.skipped += parsed.skipped
-            for entry in parsed.entries {
-                scan.latest[entry.id] = entry
-                scan.audioNames.insert(entry.audioFile)
-            }
+            for entry in parsed.entries { _ = scan.add(entry, from: url.lastPathComponent) }
         }
+        scan.sortLive()
+        cache = (stamps, scan)
         return scan
     }
 
