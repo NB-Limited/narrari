@@ -176,6 +176,42 @@ final class FakeCleanupEngine: CleanupEngine {
     }
 }
 
+// Decodes pieces together as the in-app model does; a piece cleaned alone goes to `alone`.
+final class FakeBatchCleanupEngine: BatchCleanupEngine {
+    let alone: FakeCleanupEngine
+    private let gate: Gate?
+    private let replies: @Sendable ([String]) throws -> [String?]
+    private let recorded = Mutex<[[String]]>([])
+
+    init(
+        gate: Gate? = nil,
+        alone: FakeCleanupEngine = FakeCleanupEngine { $0.uppercased() },
+        replies: @escaping @Sendable ([String]) throws -> [String?]
+    ) {
+        self.gate = gate
+        self.alone = alone
+        self.replies = replies
+    }
+
+    var batches: [[String]] { recorded.withLock { $0 } }
+    var name: String { alone.name }
+    var runsInApp: Bool { alone.runsInApp }
+    var state: ModelState { alone.state }
+
+    func load() async throws { try await alone.load() }
+    func unload() async { await alone.unload() }
+
+    func rewrite(_ transcript: String, instruction: String, growth: ReplyGrowth) async throws -> String {
+        try await alone.rewrite(transcript, instruction: instruction, growth: growth)
+    }
+
+    func rewrite(together transcripts: [String], instruction: String, growth: ReplyGrowth) async throws -> [String?] {
+        recorded.withLock { $0.append(transcripts) }
+        try await gate?.pass()
+        return try replies(transcripts)
+    }
+}
+
 @MainActor
 @Observable
 final class FakeMuting: OutputMuting {

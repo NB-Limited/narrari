@@ -14,3 +14,11 @@ func withTimeLimit<Value: Sendable>(
         throw TimeLimitExceeded()
     }
 }
+
+extension Clock where Duration == Swift.Duration {
+    // The time left of a limit started now, read again at each call.
+    func countdown(from limit: Duration) -> @Sendable () -> Duration {
+        let end = now.advanced(by: limit)
+        return { now.duration(to: end) }
+    }
+}

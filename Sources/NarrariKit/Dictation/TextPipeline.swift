@@ -94,19 +94,14 @@ public struct TextPipeline: Sendable {
 
     private func cleanInChunks(_ text: String, with prompt: Prompt, spellings: [String]) async -> CleanupResult {
         let chunks = SentenceChunks(text, maxWords: Self.chunkWords)
-        var results: [CleanupResult] = []
-        for piece in chunks.pieces {
-            if !results.isEmpty, Task.isCancelled { break }
-            results.append(await cleanup.clean(piece, with: prompt, spellings: spellings))
-        }
+        let results = await cleanup.clean(chunks.pieces, with: prompt, spellings: spellings)
         let model = results.last?.model ?? ""
         let cleaned = results.filter { $0.status == .cleaned }.count
         guard cleaned > 0 else {
             return CleanupResult(text: text, model: model, status: .skipped, reason: results.first?.reason ?? .nothingToClean)
         }
         if cleaned < chunks.pieces.count { Log.count("cleanup-chunks-kept-as-heard", chunks.pieces.count - cleaned) }
-        let replies = chunks.pieces.indices.map { $0 < results.count ? results[$0].text : chunks.pieces[$0] }
-        return CleanupResult(text: chunks.joined(replies), model: model, status: .cleaned, reason: nil)
+        return CleanupResult(text: chunks.joined(results.map(\.text)), model: model, status: .cleaned, reason: nil)
     }
 
     @MainActor public func holdCleanupModel() { cleanup.holdModel() }

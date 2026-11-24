@@ -6,7 +6,7 @@ struct TextPipelineTests {
     private let folder = TemporaryFolder()
     private let settings = ThrowawaySettings()
 
-    private func pipeline(_ engine: FakeCleanupEngine) throws -> TextPipeline {
+    private func pipeline(_ engine: any CleanupEngine) throws -> TextPipeline {
         let dictionary = DictionaryStore(root: folder.url)
         try dictionary.edit { $0 = WordList(words: ["Narrari"], replacements: [Replacement(phrase: "nb limited", text: "NB Limited")]) }
         return TextPipeline(
@@ -115,6 +115,29 @@ struct TextPipelineTests {
 
         #expect(engine.calls.count == 2)
         #expect(engine.calls[0] == engine.calls[1])
+        #expect(result.cleanup == direct)
+    }
+
+    @Test func a_long_dictation_is_cleaned_in_one_batch_and_joined_in_order() async throws {
+        let engine = FakeBatchCleanupEngine { $0.map { $0.uppercased() } }
+
+        let result = try await pipeline(engine).run(Self.heard, prompt: .tidy, cleanup: .on)
+
+        #expect(engine.batches == [[Self.first + " " + Self.second, Self.third]])
+        #expect(engine.alone.calls.isEmpty)
+        #expect(result.cleanup.status == .cleaned)
+        #expect(result.cleanup.text == Self.heard.uppercased())
+    }
+
+    @Test func a_short_dictation_on_a_batching_engine_is_cleaned_alone_as_before() async throws {
+        let engine = FakeBatchCleanupEngine { _ in ["never asked"] }
+        let direct = await CleanupService(engine: engine, settings: settings.store, clock: TestClock())
+            .clean(Self.first, with: .tidy, spellings: ["Narrari"])
+
+        let result = try await pipeline(engine).run(Self.first, prompt: .tidy, cleanup: .on)
+
+        #expect(engine.batches.isEmpty)
+        #expect(engine.alone.calls.count == 2)
         #expect(result.cleanup == direct)
     }
 

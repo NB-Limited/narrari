@@ -261,7 +261,7 @@ func remote(_ address: String, model: String, file: String, dictionary: Dictiona
     print("via:      \(transcript.fallbackReason.map { "local model, outside service \($0.rawValue)" } ?? "outside service")")
 }
 
-func memoryMegabytes() -> (footprint: Double, resident: Double) {
+func memoryMegabytes() -> (footprint: Double, resident: Double, peak: Double) {
     var info = task_vm_info_data_t()
     var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
     let status = withUnsafeMutablePointer(to: &info) {
@@ -269,8 +269,8 @@ func memoryMegabytes() -> (footprint: Double, resident: Double) {
             task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
         }
     }
-    guard status == KERN_SUCCESS else { return (.nan, .nan) }
-    return (Double(info.phys_footprint) / 1_048_576, Double(info.resident_size) / 1_048_576)
+    guard status == KERN_SUCCESS else { return (.nan, .nan, .nan) }
+    return (Double(info.phys_footprint) / 1_048_576, Double(info.resident_size) / 1_048_576, Double(info.ledger_phys_footprint_peak) / 1_048_576)
 }
 
 func milliseconds(_ values: [Double], at fraction: Double) -> Double {

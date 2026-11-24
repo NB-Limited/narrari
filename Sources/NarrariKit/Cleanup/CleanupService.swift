@@ -49,6 +49,8 @@ public struct CleanupService: Sendable {
     private static let localSecondsPerCharacter = 1.0 / (3 * 75)
     private static let reloadAllowance = 2.0
     private static let localCeiling = 10.0
+    // Pieces of one dictation decoded together at most; more run as further batches.
+    public static let batchLimit = 8
 
     private let engine: @Sendable () -> (any CleanupEngine)?
     private let slot: CleanupEngineSlot?
@@ -81,39 +83,110 @@ public struct CleanupService: Sendable {
     public func clean(_ transcript: String, with prompt: Prompt, spellings: [String] = []) async -> CleanupResult {
         guard let engine = engine() else { return skipped(transcript, .notSetUp, engine: nil) }
         let isReloading: Bool
-        switch await engine.state {
-        case .ready: isReloading = false
-        // Downloaded and only loading into memory, as after an idle unload: the rewrite waits for it inside the time limit.
-        case .preparing(let fraction, _) where fraction >= 1: isReloading = true
-        case .preparing: return skipped(transcript, .modelLoading, engine: engine)
-        case .missing, .failed: return skipped(transcript, .modelUnavailable, engine: engine)
+        switch Self.readiness(await engine.state) {
+        case .refused(let reason): return skipped(transcript, reason, engine: engine)
+        case .ready(let reloading): isReloading = reloading
         }
-        var instruction = Self.framing + "\n\n" + prompt.instruction
-        if !spellings.isEmpty {
-            instruction += "\nSpell these words exactly as written here: " + spellings.joined(separator: ", ") + "."
+        let limit = engine.runsInApp
+            ? Self.localTimeLimit(characters: transcript.count, isReloading: isReloading)
+            : .seconds(settings.value(CleanupSettings.chatTimeLimit))
+        return await rewrite(transcript, with: prompt, instruction: Self.instruction(prompt, spellings: spellings), engine: engine, limit: limit)
+    }
+
+    // One dictation's pieces in order, a result each. An engine that batches gets up to batchLimit of them at once; a
+    // piece left over on its own, or any piece for an engine that does not batch, is cleaned as above.
+    public func clean(_ pieces: [String], with prompt: Prompt, spellings: [String] = []) async -> [CleanupResult] {
+        var results: [CleanupResult] = []
+        while results.count < pieces.count {
+            let rest = pieces[results.count...]
+            if !results.isEmpty, Task.isCancelled {
+                let engine = engine()
+                return results + rest.map { skipped($0, .hotkey, engine: engine) }
+            }
+            let group = Array(rest.prefix(Self.batchLimit))
+            if group.count > 1, let batching = engine() as? any BatchCleanupEngine {
+                results += await cleanTogether(group, with: prompt, spellings: spellings, engine: batching)
+            } else {
+                results.append(await clean(group[0], with: prompt, spellings: spellings))
+            }
         }
-        let reply: String
+        return results
+    }
+
+    // The batch and any piece redone alone after it share the time the pieces would have had one after another.
+    private func cleanTogether(_ pieces: [String], with prompt: Prompt, spellings: [String], engine: any BatchCleanupEngine) async -> [CleanupResult] {
+        let isReloading: Bool
+        switch Self.readiness(await engine.state) {
+        case .refused(let reason): return pieces.map { skipped($0, reason, engine: engine) }
+        case .ready(let reloading): isReloading = reloading
+        }
+        let instruction = Self.instruction(prompt, spellings: spellings)
+        let limit = Self.localTimeLimit(pieces: pieces.map(\.count), isReloading: isReloading)
+        let timeLeft = clock.countdown(from: limit)
+        var replies: [String?]
         do {
-            let limit = engine.runsInApp
-                ? Self.localTimeLimit(characters: transcript.count, isReloading: isReloading)
-                : .seconds(settings.value(CleanupSettings.chatTimeLimit))
-            reply = try await withTimeLimit(limit, clock: clock) { [engine, instruction] in
+            replies = try await withTimeLimit(timeLeft(), clock: clock) { [engine, instruction] in
+                try await engine.rewrite(together: pieces, instruction: instruction, growth: prompt.growth)
+            }
+            guard replies.count == pieces.count else { throw CleanupEngineError.generationFailed() }
+            let unfinished = replies.filter { $0 == nil }.count
+            if unfinished > 0 { Log.count("cleanup-batch-rows-redone", unfinished) }
+        } catch let error where !Task.isCancelled && Self.retriesAlone(error) {
+            Log.event("cleanup-batch-fell-back")
+            replies = Array(repeating: nil, count: pieces.count)
+        } catch {
+            let reason = reason(for: error)
+            return pieces.map { skipped($0, reason, engine: engine) }
+        }
+        var results: [CleanupResult] = []
+        for (piece, reply) in zip(pieces, replies) {
+            if let reply {
+                results.append(judged(reply, transcript: piece, with: prompt, engine: engine))
+            } else if Task.isCancelled {
+                results.append(skipped(piece, .hotkey, engine: engine))
+            } else {
+                let limit = min(Self.localTimeLimit(characters: piece.count, isReloading: false), timeLeft())
+                results.append(limit > .zero
+                    ? await rewrite(piece, with: prompt, instruction: instruction, engine: engine, limit: limit)
+                    : skipped(piece, reason(for: TimeLimitExceeded()), engine: engine))
+            }
+        }
+        return results
+    }
+
+    // A time-out, a stop and a model that is gone end the same way alone; anything else may be the batch alone.
+    private static func retriesAlone(_ error: any Error) -> Bool {
+        !(error is TimeLimitExceeded || error is CancellationError || error as? CleanupEngineError == .modelUnavailable)
+    }
+
+    private func rewrite(
+        _ transcript: String, with prompt: Prompt, instruction: String, engine: any CleanupEngine, limit: Duration
+    ) async -> CleanupResult {
+        do {
+            let reply = try await withTimeLimit(limit, clock: clock) { [engine, instruction] in
                 try await engine.rewrite(transcript, instruction: instruction, growth: prompt.growth)
             }
-        } catch is TimeLimitExceeded {
-            Log.event("cleanup-timed-out")
-            return skipped(transcript, .timedOut, engine: engine)
-        } catch CleanupEngineError.modelUnavailable {
-            return skipped(transcript, .modelUnavailable, engine: engine)
-        } catch CleanupEngineError.replyTooLong {
-            return skipped(transcript, .replyTooLong, engine: engine)
-        } catch _ where Task.isCancelled {
-            return skipped(transcript, .hotkey, engine: engine)
+            return judged(reply, transcript: transcript, with: prompt, engine: engine)
         } catch {
-            Log.failure("cleanup-failed", error: error)
-            return skipped(transcript, .engineFailed, engine: engine)
+            return skipped(transcript, reason(for: error), engine: engine)
         }
+    }
 
+    private func reason(for error: any Error) -> CleanupResult.Reason {
+        switch error {
+        case is TimeLimitExceeded:
+            Log.event("cleanup-timed-out")
+            return .timedOut
+        case CleanupEngineError.modelUnavailable: return .modelUnavailable
+        case CleanupEngineError.replyTooLong: return .replyTooLong
+        case _ where Task.isCancelled: return .hotkey
+        default:
+            Log.failure("cleanup-failed", error: error)
+            return .engineFailed
+        }
+    }
+
+    private func judged(_ reply: String, transcript: String, with prompt: Prompt, engine: any CleanupEngine) -> CleanupResult {
         let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty {
             return skipped(transcript, .emptyReply, engine: engine)
@@ -125,6 +198,29 @@ public struct CleanupService: Sendable {
             return skipped(transcript, .unlikeDictation, engine: engine)
         }
         return cleaned(text, engine: engine)
+    }
+
+    private enum Readiness {
+        case ready(isReloading: Bool)
+        case refused(CleanupResult.Reason)
+    }
+
+    private static func readiness(_ state: ModelState) -> Readiness {
+        switch state {
+        case .ready: .ready(isReloading: false)
+        // Downloaded and only loading into memory, as after an idle unload: the rewrite waits for it inside the time limit.
+        case .preparing(let fraction, _) where fraction >= 1: .ready(isReloading: true)
+        case .preparing: .refused(.modelLoading)
+        case .missing, .failed: .refused(.modelUnavailable)
+        }
+    }
+
+    private static func instruction(_ prompt: Prompt, spellings: [String]) -> String {
+        var instruction = framing + "\n\n" + prompt.instruction
+        if !spellings.isEmpty {
+            instruction += "\nSpell these words exactly as written here: " + spellings.joined(separator: ", ") + "."
+        }
+        return instruction
     }
 
     private static func reply(_ text: String, suits transcript: String, with prompt: Prompt) -> Bool {
@@ -143,6 +239,12 @@ public struct CleanupService: Sendable {
     public static func localTimeLimit(characters: Int, isReloading: Bool) -> Duration {
         let seconds = localFloor + Double(characters) * localSecondsPerCharacter + (isReloading ? reloadAllowance : 0)
         return .seconds(min(seconds, localCeiling))
+    }
+
+    // Pieces decoded together get the sum of the limits they would have had one after another, so a batch never keeps
+    // the user waiting longer than cleaning them one by one could.
+    public static func localTimeLimit(pieces characters: [Int], isReloading: Bool) -> Duration {
+        characters.indices.map { localTimeLimit(characters: characters[$0], isReloading: isReloading && $0 == 0) }.reduce(.zero, +)
     }
 
     private func cleaned(_ text: String, engine: any CleanupEngine) -> CleanupResult {

@@ -139,10 +139,6 @@ func writeLines(_ rows: [some Encodable], to url: URL) throws {
     try data.write(to: url)
 }
 
-func readLines<Row: Decodable>(_ type: Row.Type, from url: URL) throws -> [Row] {
-    try String(contentsOf: url, encoding: .utf8).split(separator: "\n").map { try JSONDecoder().decode(Row.self, from: Data($0.utf8)) }
-}
-
 struct ReplayCleaner {
     let engine: LoggingEngine
     let service: CleanupService
