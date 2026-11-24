@@ -62,8 +62,8 @@ public struct TextPipeline: Sendable {
             cleaned = CleanupResult(text: marked.text, model: "", status: .off, reason: .skippedLanguage)
         case .on where marked.text.allSatisfy(\.isWhitespace):
             cleaned = CleanupResult(text: marked.text, model: "", status: .skipped, reason: .nothingToClean)
-        case .on where prompt.capsReplyLength && marked.written > 0 && marked.text.contains("\n"):
-            cleaned = await cleanParagraphs(marked.text, with: prompt, spellings: list.words)
+        case .on where prompt.capsReplyLength:
+            cleaned = await cleanInChunks(marked.text, with: prompt, spellings: list.words)
         case .on:
             cleaned = await cleanup.clean(marked.text, with: prompt, spellings: list.words)
         }
@@ -88,27 +88,25 @@ public struct TextPipeline: Sendable {
         )
     }
 
-    // Measured 20-Nov-26: the model drops most line breaks, so a prompt that keeps the speaker's words cleans each
-    // paragraph alone, and one not cleaned leaves the dictation as heard; a prompt that rewrites gets the whole text.
-    private func cleanParagraphs(_ text: String, with prompt: Prompt, spellings: [String]) async -> CleanupResult {
-        var result = ""
-        var model = ""
-        var rest = Substring(text)
-        while !rest.isEmpty {
-            let paragraph = rest.prefix { $0 != "\n" }
-            let breaks = rest[paragraph.endIndex...].prefix { $0 == "\n" }
-            if !paragraph.allSatisfy(\.isWhitespace) {
-                let cleaned = await cleanup.clean(String(paragraph), with: prompt, spellings: spellings)
-                guard cleaned.status == .cleaned else {
-                    return CleanupResult(text: text, model: cleaned.model, status: cleaned.status, reason: cleaned.reason)
-                }
-                result += cleaned.text
-                model = cleaned.model
-            }
-            result += breaks
-            rest = rest[breaks.endIndex...]
+    // Measured 24-Nov-26 on 256 dictations, whole against 40 word runs: fillers left 145 against 62 of 465, a 118 word one
+    // kept 57 against 95 words, a 314 word one timed out against cleaned, in the same time.
+    private static let chunkWords = 40
+
+    private func cleanInChunks(_ text: String, with prompt: Prompt, spellings: [String]) async -> CleanupResult {
+        let chunks = SentenceChunks(text, maxWords: Self.chunkWords)
+        var results: [CleanupResult] = []
+        for piece in chunks.pieces {
+            if !results.isEmpty, Task.isCancelled { break }
+            results.append(await cleanup.clean(piece, with: prompt, spellings: spellings))
         }
-        return CleanupResult(text: result, model: model, status: .cleaned, reason: nil)
+        let model = results.last?.model ?? ""
+        let cleaned = results.filter { $0.status == .cleaned }.count
+        guard cleaned > 0 else {
+            return CleanupResult(text: text, model: model, status: .skipped, reason: results.first?.reason ?? .nothingToClean)
+        }
+        if cleaned < chunks.pieces.count { Log.count("cleanup-chunks-kept-as-heard", chunks.pieces.count - cleaned) }
+        let replies = chunks.pieces.indices.map { $0 < results.count ? results[$0].text : chunks.pieces[$0] }
+        return CleanupResult(text: chunks.joined(replies), model: model, status: .cleaned, reason: nil)
     }
 
     @MainActor public func holdCleanupModel() { cleanup.holdModel() }

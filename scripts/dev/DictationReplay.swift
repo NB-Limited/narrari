@@ -5,10 +5,12 @@ import NarrariKit
 // never a word of a dictation, an app name or a prompt name of the owner's own.
 
 actor ReplyLog {
+    private(set) var heard: [String] = []
     private(set) var replies: [String?] = []
     private(set) var seconds: [Double] = []
 
-    func start() -> Int {
+    func start(_ transcript: String) -> Int {
+        heard.append(transcript)
         replies.append(nil)
         seconds.append(.nan)
         return replies.count - 1
@@ -30,7 +32,7 @@ struct LoggingEngine: CleanupEngine {
     func load() async throws { try await engine.load() }
     func unload() async { await engine.unload() }
     func rewrite(_ transcript: String, instruction: String, growth: ReplyGrowth) async throws -> String {
-        let call = await log.start()
+        let call = await log.start(transcript)
         let start = ContinuousClock.now
         do {
             let reply = try await engine.rewrite(transcript, instruction: instruction, growth: growth)
@@ -140,35 +142,20 @@ func readLines<Row: Decodable>(_ type: Row.Type, from url: URL) throws -> [Row] 
 struct ReplayCleaner {
     let engine: LoggingEngine
     let service: CleanupService
+    let pipeline: TextPipeline
     let spellings: [String]
     var calls = 0
 
-    // A prompt that rewrites is cleaned whole in every variant, and a limit that cuts as the one before reuses its result.
+    // A prompt that rewrites is cleaned whole by the app too, so its pipeline row reuses the whole one.
     mutating func replay(_ entry: HistoryEntry, prompt: Prompt) async -> ([ReplayRow], [ChunkRow]) {
         let (whole, result) = await whole(entry, prompt: prompt)
-        var rows = [whole]
-        var chunkRows: [ChunkRow] = []
-        var previous: (pieces: [String], row: ReplayRow)?
-        for limit in [40, 80] {
-            let chunks = SentenceChunks(entry.rawText, maxWords: limit)
-            let pieces = chunks.pieces
-            if chunks.joined(pieces) != entry.rawText { print("\(whole.id) chunks-\(limit): pieces do not join back to the dictation") }
-            var row: ReplayRow
-            if !prompt.capsReplyLength {
-                row = whole
-                row.variant = "chunks-\(limit)"
-            } else if let previous, previous.pieces == pieces {
-                row = previous.row
-                row.variant = "chunks-\(limit)"
-            } else {
-                let chunks: [ChunkRow]
-                (row, chunks) = await chunked(entry, prompt: prompt, maxWords: limit, whole: result)
-                chunkRows += chunks
-            }
-            rows.append(row)
-            previous = (pieces, row)
+        guard prompt.capsReplyLength else {
+            var row = whole
+            row.variant = "pipeline"
+            return ([whole, row], [])
         }
-        return (rows, chunkRows)
+        let (row, chunks) = await piped(entry, prompt: prompt, whole: result)
+        return ([whole, row], chunks)
     }
 
     mutating func whole(_ entry: HistoryEntry, prompt: Prompt) async -> (ReplayRow, CleanupResult) {
@@ -184,32 +171,31 @@ struct ReplayCleaner {
         return (row, result)
     }
 
-    mutating func chunked(_ entry: HistoryEntry, prompt: Prompt, maxWords: Int, whole: CleanupResult) async -> (ReplayRow, [ChunkRow]) {
+    // Through the app's own path; a chunk counts as turned down when the model gave no reply or one the service's guard refuses.
+    mutating func piped(_ entry: HistoryEntry, prompt: Prompt, whole: CleanupResult) async -> (ReplayRow, [ChunkRow]) {
         let first = await engine.log.replies.count
         let start = ContinuousClock.now
-        let outcome = await ChunkedCleanup(service: service, maxWords: maxWords).clean(entry.rawText, with: prompt, spellings: spellings)
+        let result = await pipeline.run(heard: entry.rawText, prompt: prompt).cleanup
         let elapsed = seconds(since: start)
-        let replies = await engine.log.replies
-        let times = await engine.log.seconds
-        calls += outcome.results.count
-        let variant = "chunks-\(maxWords)"
-        // A call the service never made, such as for a model still loading, leaves no reply in the log.
-        let isLogged = replies.count - first == outcome.results.count
-        let chunkRows = outcome.results.enumerated().map { index, result in
-            let piece = outcome.chunks.pieces[index]
-            let reply = isLogged ? replies[first + index] : nil
+        let heard = await engine.log.heard[first...]
+        let replies = await engine.log.replies[first...]
+        let times = await engine.log.seconds[first...]
+        calls += heard.count
+        let chunkRows = zip(heard.indices, heard).map { index, piece in
+            let reply = replies[index]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let isCleaned = reply.map { reply in
+                !reply.isEmpty && ReplyFit(transcript: piece, reply: reply).suits(prompt) && !SpokenLanguage.differs(reply, from: piece)
+            } ?? false
             return ChunkRow(
-                id: shortID(entry.id), variant: variant, index: index, measure: ReplayMeasure(heard: piece, reply: reply ?? piece), replied: reply != nil,
-                seconds: isLogged ? times[first + index] : .nan, status: result.status.rawValue, reason: result.reason?.rawValue
+                id: shortID(entry.id), variant: "pipeline", index: index - first, measure: ReplayMeasure(heard: piece, reply: reply ?? piece),
+                replied: reply != nil, seconds: times[index], status: isCleaned ? "cleaned" : "skipped", reason: nil
             )
         }
-        let cleaned = outcome.results.filter { $0.status == .cleaned }.count
+        let cleaned = chunkRows.filter { $0.status == "cleaned" }.count
         let row = ReplayRow(
-            id: shortID(entry.id), variant: variant, prompt: Self.label(prompt), measure: ReplayMeasure(heard: entry.rawText, reply: outcome.text),
-            seconds: elapsed, status: cleaned == 0 ? "skipped" : cleaned == outcome.results.count ? "cleaned" : "partly",
-            chunks: outcome.results.count, cleaned: cleaned, skipped: outcome.results.count - cleaned,
-            reasons: outcome.results.compactMap { $0.reason?.rawValue },
-            sameAsWhole: outcome.results.count == 1 ? outcome.text == whole.text : nil
+            id: shortID(entry.id), variant: "pipeline", prompt: Self.label(prompt), measure: ReplayMeasure(heard: entry.rawText, reply: result.text),
+            seconds: elapsed, status: result.status.rawValue, chunks: chunkRows.count, cleaned: cleaned, skipped: chunkRows.count - cleaned,
+            reasons: result.reason.map { [$0.rawValue] } ?? [], sameAsWhole: chunkRows.count == 1 ? result.text == whole.text : nil
         )
         return (row, chunkRows)
     }
@@ -220,8 +206,8 @@ struct ReplayCleaner {
     }
 }
 
-// Experiment 1: every finished dictation cleaned whole, as the app does, and in runs of sentences of 40 and 80 words.
-// Only a prompt that keeps the speaker's words is cut; any other prompt is cleaned whole in every variant.
+// Experiment 1: every finished dictation cleaned whole, and through the app's pipeline, which cleans a prompt that keeps
+// the speaker's words in runs of sentences.
 func dictationReplayText(history: String, out: String, model: String?) async throws {
     let folder = URL(filePath: out)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -232,12 +218,13 @@ func dictationReplayText(history: String, out: String, model: String?) async thr
     try await local.load()
     let engine = LoggingEngine(engine: local)
     let service = CleanupService(engine: engine, settings: .shared)
+    let pipeline = TextPipeline(cleanup: service, prompts: .shared, dictionary: .shared, settings: .shared)
     _ = await service.clean("um so this is just a warm up sentence", with: .tidy)
     print(String(
         format: "%d dictations, %d dictionary words, load average %.1f, footprint %.0f MB",
         entries.count, spellings.count, loadAverage(), memoryMegabytes().footprint
     ))
-    var cleaner = ReplayCleaner(engine: engine, service: service, spellings: spellings)
+    var cleaner = ReplayCleaner(engine: engine, service: service, pipeline: pipeline, spellings: spellings)
     var rows: [ReplayRow] = []
     var chunkRows: [ChunkRow] = []
     var nextReport = 100
@@ -261,7 +248,7 @@ func dictationReplayText(history: String, out: String, model: String?) async thr
 func printTextSummary(rows: [ReplayRow], chunks: [ChunkRow]) {
     let buckets: [(String, ClosedRange<Int>)] = [("1-25", 1...25), ("26-75", 26...75), ("76-150", 76...150), ("151+", 151...Int.max)]
     print("\nvariant | words | n | p50 s | p90 s | total s | kept<0.9 | kept<0.8 | lost>10% | skipped whole | chunks skipped | fillers in | left")
-    for variant in ["whole", "chunks-40", "chunks-80"] {
+    for variant in ["whole", "pipeline"] {
         for (label, range) in buckets + [("all", 1...Int.max)] {
             let set = rows.filter { $0.variant == variant && range.contains($0.measure.heardWords) }
             let times = set.map(\.seconds)
@@ -274,13 +261,11 @@ func printTextSummary(rows: [ReplayRow], chunks: [ChunkRow]) {
             ))
         }
     }
-    let single = rows.filter { $0.variant == "chunks-40" && $0.sameAsWhole != nil }
+    let single = rows.filter { $0.variant == "pipeline" && $0.sameAsWhole != nil }
     print("\none-chunk dictations cleaned again: \(single.count), text differs from whole: \(single.filter { $0.sameAsWhole == false }.count)")
     let reasons = Dictionary(grouping: rows.flatMap { row in row.reasons.map { "\(row.variant) \($0)" } }, by: { $0 }).mapValues(\.count)
     print("reasons: " + reasons.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))
-    for variant in ["chunks-40", "chunks-80"] {
-        printChunkGuard(chunks.filter { $0.variant == variant }, variant: variant)
-    }
+    printChunkGuard(chunks, variant: "pipeline")
 }
 
 // Lossy: the reply lost more than a tenth of the chunk's words beyond fillers. Each threshold is on contentKept alone.
