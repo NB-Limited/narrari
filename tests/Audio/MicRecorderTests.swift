@@ -10,9 +10,10 @@ struct MicRecorderTests {
     private let settings = ThrowawaySettings()
     private let inputs = FakeInputs()
 
-    private func recorder(microphone: AVAuthorizationStatus = .authorized) -> MicRecorder {
+    private func recorder(microphone: AVAuthorizationStatus = .authorized, write: MicRecorder.Write? = nil) -> MicRecorder {
         let permissions = Permissions(settings: settings.store, access: .fixed(), microphoneStatus: { microphone })
-        return MicRecorder(settings: settings.store, permissions: permissions, inputs: inputs)
+        guard let write else { return MicRecorder(settings: settings.store, permissions: permissions, inputs: inputs) }
+        return MicRecorder(settings: settings.store, permissions: permissions, inputs: inputs, write: write)
     }
 
     private func file() -> URL {
@@ -35,6 +36,17 @@ struct MicRecorderTests {
         try recorder().start(writingTo: kept)
 
         #expect(try FileManager.default.attributesOfItem(atPath: kept.path)[.posixPermissions] as? Int == 0o600)
+    }
+
+    @Test func a_write_the_disk_refuses_keeps_every_second_for_the_text_and_says_the_audio_is_short() throws {
+        let recorder = recorder { _, _, _ in kAudioFileUnspecifiedError }
+        try recorder.start(writingTo: file())
+        inputs.engines.last?.play(seconds: 1)
+
+        let recorded = recorder.stop()
+
+        #expect(abs(recorded.samples.count - 16_000) < 100)
+        #expect(recorded.problem == RecorderError.audioWriteFailed.problem)
     }
 
     @Test func start_with_microphone_access_off_opens_no_microphone() {
@@ -68,7 +80,7 @@ struct MicRecorderTests {
         inputs.engines.last?.hardwareChanged()
         inputs.engines.last?.play(seconds: 1)
         let recent = recorder.recentSamples(20_000)
-        let samples = recorder.stop()
+        let samples = recorder.stop().samples
 
         #expect(interruptions == 0)
         #expect(switches.isEmpty)
@@ -89,7 +101,7 @@ struct MicRecorderTests {
         inputs.current = 2
         inputs.engines.last?.hardwareChanged()
         inputs.engines.last?.play(seconds: 1)
-        let samples = recorder.stop()
+        let samples = recorder.stop().samples
 
         #expect(interruptions == 0)
         #expect(switches == ["Microphone 2"])

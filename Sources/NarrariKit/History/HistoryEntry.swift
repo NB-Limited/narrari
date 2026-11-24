@@ -35,6 +35,8 @@ public struct HistoryEntry: Codable, Sendable, Equatable {
     public var speechFallback: String?
     public var speechModel: String?
     public var audioFile: String
+    // The problem's code when the kept audio is shorter than the dictation; nil while it is whole.
+    public var audioFailure: String?
     // The name of the file the audio came from; nil for a dictation.
     public var file: String?
     public var outcome: Outcome?
@@ -63,7 +65,7 @@ public struct HistoryEntry: Codable, Sendable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case version = "v"
-        case id, startedAt, durationMs, app, mode, rawText, finalText, cleanup, prompt, speechFallback, speechModel, audioFile, file, outcome
+        case id, startedAt, durationMs, app, mode, rawText, finalText, cleanup, prompt, speechFallback, speechModel, audioFile, audioFailure, file, outcome
         case deleted
     }
 

@@ -37,6 +37,10 @@ extension HistoryEntry {
         speechFallback.flatMap(SpeechFallbackReason.init(rawValue:)).map { Notice.speechFallback($0).message }
     }
 
+    public var audioProblem: Problem? {
+        audioFailure.map { _ in RecorderError.audioWriteFailed.problem }
+    }
+
     public var outcomeNote: String? {
         switch outcome {
         case .clipboard: "Copied to the clipboard, not pasted"

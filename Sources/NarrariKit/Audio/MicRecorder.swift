@@ -8,6 +8,7 @@ public enum RecorderError: ProblemError, Equatable {
     case microphoneAccessRequested
     case noInput
     case startFailed
+    case audioWriteFailed
 
     public var problem: Problem {
         switch self {
@@ -15,6 +16,7 @@ public enum RecorderError: ProblemError, Equatable {
         case .microphoneAccessRequested: Problem("recorder.asked", "Allow microphone access, then try again.", canRetry: true)
         case .noInput: Problem("recorder.no-input", Self.couldNotStart, canRetry: true)
         case .startFailed: Problem("recorder.start-failed", Self.couldNotStart, canRetry: true)
+        case .audioWriteFailed: Problem("recorder.audio-write-failed", "Part of the audio could not be saved, so it plays back shorter. The text is whole.")
         }
     }
 
@@ -33,8 +35,18 @@ public protocol AudioCapture: AnyObject {
     var hasHeardSound: Bool { get }
     var microphoneName: String? { get }
     func start(writingTo file: URL) throws
-    func stop() -> [Float]
+    func stop() -> RecordedAudio
     func recentSamples(_ count: Int) -> [Float]
+}
+
+public struct RecordedAudio: Sendable {
+    public let samples: [Float]
+    public let problem: Problem?
+
+    public init(samples: [Float], problem: Problem? = nil) {
+        self.samples = samples
+        self.problem = problem
+    }
 }
 
 public protocol AudioInputs: Sendable {
@@ -63,9 +75,12 @@ public final class MicRecorder: AudioCapture {
     public var onSwitch: ((String?) -> Void)?
     public var onFirstSound: (() -> Void)?
 
+    public typealias Write = @Sendable (ExtAudioFileRef, UInt32, UnsafePointer<AudioBufferList>) -> OSStatus
+
     private let settings: SettingsStore
     private let permissions: Permissions
     private let inputs: any AudioInputs
+    private let write: Write
     private var engine: (any InputEngine)?
     private var device: AudioObjectID?
     private var sink: CaptureSink?
@@ -73,10 +88,15 @@ public final class MicRecorder: AudioCapture {
     // Counts dictations, so a first sound handed to main late never lands in the next one.
     private var dictations = 0
 
-    public init(settings: SettingsStore, permissions: Permissions, inputs: any AudioInputs = SystemAudioInputs()) {
+    // Async writes, which the header says are safe from the IO thread; a plain write blocks on the disk.
+    public init(
+        settings: SettingsStore, permissions: Permissions, inputs: any AudioInputs = SystemAudioInputs(),
+        write: @escaping Write = { ExtAudioFileWriteAsync($0, $1, $2) }
+    ) {
         self.settings = settings
         self.permissions = permissions
         self.inputs = inputs
+        self.write = write
     }
 
     public var level: Float { sink?.level ?? 0 }
@@ -102,7 +122,7 @@ public final class MicRecorder: AudioCapture {
         }
         let sink: CaptureSink
         do {
-            sink = try CaptureSink(writingTo: file, sampleRate: sampleRate, onFirstSound: Self.firstSound(of: dictations, to: self))
+            sink = try CaptureSink(writingTo: file, sampleRate: sampleRate, write: write, onFirstSound: Self.firstSound(of: dictations, to: self))
         } catch {
             Log.failure("audio-file-create", error: error)
             throw RecorderError.startFailed
@@ -121,17 +141,17 @@ public final class MicRecorder: AudioCapture {
         Log.timing("microphone-start", seconds: ProcessInfo.processInfo.systemUptime - began)
     }
 
-    public func stop() -> [Float] {
-        guard let sink else { return [] }
+    public func stop() -> RecordedAudio {
+        guard let sink else { return RecordedAudio(samples: []) }
         self.sink = nil
         engine?.stop()
         engine = nil
         device = nil
-        let samples = sink.finish()
+        let recorded = sink.finish()
         if let first = sink.firstSampleTime {
             Log.timing("microphone-first-sample", seconds: first - began)
         }
-        return samples
+        return recorded
     }
 
     public func recentSamples(_ count: Int) -> [Float] {
@@ -253,20 +273,22 @@ private final class CaptureSink: Sendable {
     private let levelBits = Atomic<UInt32>(0)
     private let heardSound = Atomic<Bool>(false)
     private let onFirstSound: @Sendable () -> Void
+    private let write: MicRecorder.Write
 
     // Devices hand over 512 frames or fewer at a time in practice; a larger buffer still converts, allocating once.
     private static let largestDeviceBuffer = 4_096
 
-    init(writingTo url: URL, sampleRate: Double, onFirstSound: @escaping @Sendable () -> Void) throws {
+    init(writingTo url: URL, sampleRate: Double, write: @escaping MicRecorder.Write, onFirstSound: @escaping @Sendable () -> Void) throws {
         guard var resampler = Resampler(from: sampleRate) else { throw RecorderError.noInput }
         resampler.prepare(frames: Self.largestDeviceBuffer)
         var samples = SampleBlocks()
         samples.makeRoom()
         state = Mutex(State(file: try Self.file(at: url), resampler: resampler, samples: samples))
         self.onFirstSound = onFirstSound
+        self.write = write
     }
 
-    // Written with async writes, which the header says are safe from the IO thread; a plain write blocks on the disk.
+    // Async writes start with an empty one, which sets up their buffer before the IO thread writes.
     private static func file(at url: URL) throws -> ExtAudioFileRef {
         let file = try SpeechAudio.createKeptFile(at: url)
         guard ExtAudioFileWriteAsync(file, 0, nil) == noErr else {
@@ -295,7 +317,7 @@ private final class CaptureSink: Sendable {
             guard let target = state.resampler.input(frames: samples.count) else { return false }
             for (index, sample) in samples.enumerated() { target[index] = sample }
             guard let output = state.resampler.convert(), let channel = output.floatChannelData?[0] else { return false }
-            if let file = state.file, ExtAudioFileWriteAsync(file, output.frameLength, output.audioBufferList) != noErr {
+            if let file = state.file, write(file, output.frameLength, output.audioBufferList) != noErr {
                 state.failedFile = file
                 state.file = nil
             }
@@ -335,7 +357,7 @@ private final class CaptureSink: Sendable {
         state.withLock { $0.firstSampleTime }
     }
 
-    func finish() -> [Float] {
+    func finish() -> RecordedAudio {
         let (files, failed, resampler, samples) = state.withLock { state in
             state.isOpen = false
             defer {
@@ -346,9 +368,9 @@ private final class CaptureSink: Sendable {
             return ([state.file, state.failedFile].compactMap(\.self), state.failedFile != nil, state.resampler, state.samples)
         }
         files.forEach { ExtAudioFileDispose($0) }
-        if failed { Log.failure("audio-file-write") }
+        if failed { Log.failure("audio-file-write", error: RecorderError.audioWriteFailed) }
         if resampler.hasFailed { Log.failure("audio-convert", error: resampler.failure) }
-        return samples.all
+        return RecordedAudio(samples: samples.all, problem: failed ? RecorderError.audioWriteFailed.problem : nil)
     }
 }
 

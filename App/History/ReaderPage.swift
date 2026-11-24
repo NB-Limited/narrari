@@ -51,7 +51,7 @@ struct ReaderPage: View {
                 .padding(EdgeInsets(top: Space.s4, leading: Space.s36, bottom: Space.s22, trailing: Space.s36))
             }
             if hasAudio {
-                AudioBar(playback: playback)
+                AudioBar(playback: playback, problem: entry.audioProblem)
             }
         }
         .task(id: entry.id) {

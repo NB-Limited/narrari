@@ -27,6 +27,7 @@ final class FakeRecorder: AudioCapture {
     private(set) var microphoneName: String? = "MacBook Pro Microphone"
     var startError: (any Error)?
     var samples: [Float]
+    var problem: Problem?
 
     init(samples: [Float] = speech(seconds: 1)) {
         self.samples = samples
@@ -38,7 +39,7 @@ final class FakeRecorder: AudioCapture {
         try Data("caff".utf8).write(to: file)
     }
 
-    func stop() -> [Float] { samples }
+    func stop() -> RecordedAudio { RecordedAudio(samples: samples, problem: problem) }
 
     func recentSamples(_ count: Int) -> [Float] { Array(samples.suffix(count)) }
 
