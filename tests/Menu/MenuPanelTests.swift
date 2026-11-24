@@ -15,6 +15,9 @@ private final class Rig {
     let library: HistoryLibrary
     let microphones: FakeMicrophones
     let meetings = MeetingRig()
+    let meetingStore: MeetingStore
+    let meetingLibrary: MeetingLibrary
+    let fileJob: FileJob
     let panel: MenuPanel
     static let builtIn = Microphone(id: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone")
     static let airPods = Microphone(id: "AirPods-input", name: "AirPods Pro")
@@ -45,10 +48,19 @@ private final class Rig {
             modes: modes, settings: settings.store
         )
         library = HistoryLibrary(store: history, retranscription: retranscription, apps: AppDirectory())
+        meetingStore = MeetingStore(root: folder.url.appending(path: "Meetings"), trash: { try FileManager.default.removeItem(at: $0) })
+        let modelStore = ModelStore(root: folder.url.appending(path: "Models"))
+        meetingLibrary = MeetingLibrary(
+            store: meetingStore, processor: StartedProcessor(), models: MeetingModels(store: modelStore, fetch: FakeModelFetch(store: modelStore).fetch),
+            progress: MeetingTranscript.Progress(), settings: settings.store, recording: { nil }
+        )
+        fileJob = FileJob(library: library, retranscription: retranscription) { true }
         let permissions = Permissions(settings: settings.store, access: access, microphoneStatus: { .authorized }, clock: clock)
         let names = ["com.apple.mail": "Mail", "com.tinyspeck.slackmacgap": "Slack"]
         panel = MenuPanel(
-            session: session, meetings: meetings.session, microphones: Microphones(settings: settings.store, source: self.microphones), library: library,
+            session: session, meetings: meetings.session, meetingLibrary: meetingLibrary,
+            workNews: WorkNews(meetings: meetingLibrary, files: fileJob),
+            microphones: Microphones(settings: settings.store, source: self.microphones), library: library,
             permissions: permissions, settings: settings.mirror, pasteboard: pasteboard,
             appName: { names[$0] ?? $0 }, clock: clock, now: { [clock] in Rig.noon.addingTimeInterval(clock.seconds) }
         )
@@ -62,6 +74,22 @@ private final class Rig {
             audioFile: HistoryEntry.audioFileName(for: id), outcome: .pasted
         ))
         await library.refresh()
+    }
+
+    // A meeting whose summary step is in the given state, read into the list as the window would.
+    @discardableResult
+    func meeting(_ title: String, summary: Meeting.Step) async throws -> Meeting {
+        var meeting = Meeting(title: title, startedAt: Self.noon, app: "", source: .call, template: "general", state: .ready)
+        for step in MeetingProcessing.Step.allCases { meeting.steps[step] = Meeting.Step(.done) }
+        meeting.steps[.summary] = summary
+        try await meetingStore.create(meeting, appName: "Calls")
+        await meetingLibrary.refresh()
+        return meeting
+    }
+
+    func finishSummary(of meeting: Meeting) async throws {
+        try await meetingStore.update(meeting.id) { $0.steps[.summary] = Meeting.Step(.done) }
+        await meetingLibrary.refresh()
     }
 
     func giveMailThreeModes() throws {
@@ -236,5 +264,67 @@ struct MenuPanelTests {
         await rig.meetings.session.stop()
         #expect(rig.panel.status == ready)
         #expect(rig.panel.activate(.importRecording) == .close(then: .importRecording))
+    }
+
+    @Test func a_failed_meeting_marks_the_icon_and_its_row_opens_the_meeting_until_it_is_fixed() async throws {
+        let rig = Rig()
+        let failed = try await rig.meeting("Weekly sync", summary: Meeting.Step(.failed, problem: "meeting.summary-failed"))
+
+        rig.panel.open()
+
+        #expect(rig.panel.attention == "The summary could not be written. Try again.")
+        #expect(rig.panel.notes.map(\.title) == ["Weekly sync"])
+        #expect(rig.panel.notes.first?.state.brief == "Failed")
+        #expect(rig.panel.highlighted == .note(.meeting(failed.id)))
+        #expect(rig.panel.activate(.note(.meeting(failed.id))) == .close(then: .open(.meeting(failed.id))))
+
+        try await rig.finishSummary(of: failed)
+        #expect(rig.panel.attention == nil)
+    }
+
+    @Test func a_summary_that_lands_while_closed_shows_once_and_opening_again_clears_it() async throws {
+        let rig = Rig()
+        let meeting = try await rig.meeting("Planning", summary: Meeting.Step(.running, since: Rig.noon))
+        try await rig.finishSummary(of: meeting)
+        await until { rig.panel.attention == nil && !rig.meetingLibrary.entries.isEmpty }
+
+        rig.panel.open()
+        let shown = rig.panel.notes
+        rig.panel.close()
+        rig.panel.open()
+
+        #expect(shown.map(\.target) == [.meeting(meeting.id)] && shown.map(\.title) == ["Planning"] && shown.first?.state == .done)
+        #expect(rig.panel.notes.isEmpty)
+        #expect(rig.panel.attention == nil)
+    }
+
+    @Test func a_meeting_being_processed_reads_the_step_under_way_not_a_fixed_line() {
+        let started = Rig.noon
+        let status = { (work: WorkState) in
+            MenuPanelStatus(
+                .ready, meeting: .processing, meetingWork: work, hotkey: "Right ⌘", elapsed: 0, meetingElapsed: 0,
+                now: started.addingTimeInterval(40)
+            )
+        }
+
+        #expect(status(.working(.findingSpeakers, since: started)).title == "Finding speakers, 0:40")
+        #expect(status(.working(.transcribing, progress: 0.42, since: started)).title == "Transcribing")
+        #expect(status(.working(.transcribing, progress: 0.42, since: started)).percent == "42%")
+        #expect(status(.waiting(.speechModel)).title == "Waits for the speech model")
+    }
+
+    @Test func a_file_that_failed_while_the_panel_was_closed_is_named_once_and_opens_the_dictations() async {
+        let rig = Rig()
+        rig.fileJob.offer([rig.folder.url.appending(path: "interview.m4a")])
+        await until { !rig.fileJob.isWorking }
+
+        rig.panel.open()
+        let shown = rig.panel.notes
+        rig.panel.close()
+        rig.panel.open()
+
+        #expect(shown.map(\.title) == ["interview.m4a"] && shown.first?.state.brief == "Failed")
+        #expect(rig.panel.notes.isEmpty)
+        #expect(rig.panel.attention == nil)
     }
 }

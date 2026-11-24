@@ -194,6 +194,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .allowAccessibility: permissions.requestAccessibility()
         case .allowMicrophone: permissions.requestMicrophone()
         case .openSpeechSettings: showMain(.settings(.speech))
+        case .open(.meeting(let id)): openMeeting(id)
+        case .open(.dictation(let id)):
+            library.selection = id
+            showMain(.history)
+        case .open(.dictations): showMain(.history)
         }
     }
 
@@ -321,10 +326,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         callNotice = CallNotice(meeting: meeting, surfaces: surfaces, looks: looks, motion: motion) { AppDirectory.shared.app(for: $0) }
         menuPanel = MenuPanelController(
             model: MenuPanel(
-                session: session, meetings: meeting, microphones: Microphones(settings: .shared, source: SystemMicrophones()),
+                session: session, meetings: meeting, meetingLibrary: meetingLibrary,
+                workNews: WorkNews(meetings: meetingLibrary, files: fileJob),
+                microphones: Microphones(settings: .shared, source: SystemMicrophones()),
                 library: library, permissions: permissions, settings: settingsMirror, appName: { AppDirectory.shared.name(for: $0) }
             ),
-            permissions: permissions, surfaces: surfaces, motion: motion
+            surfaces: surfaces, motion: motion
         ) { [weak self] action in self?.perform(action) }
     }
 

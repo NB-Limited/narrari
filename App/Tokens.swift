@@ -387,6 +387,8 @@ enum PillPreviewMetrics {
 // The menu bar panel, from the Glance card prototype.
 enum MenuPanelMetrics {
     static let recordingDot: CGFloat = 4
+    static let problemMark: CGFloat = 7
+    static let problemMarkGap: CGFloat = 1
     static let width: CGFloat = 304
     static let inset: CGFloat = 6
     static let radius: CGFloat = 14

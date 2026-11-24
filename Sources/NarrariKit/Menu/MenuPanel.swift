@@ -3,6 +3,7 @@ import Observation
 
 public enum MenuPanelItem: Hashable, Sendable {
     case fix
+    case note(MenuNote.Target)
     case lastDictation
     case mode
     case modeOption(String)
@@ -34,6 +35,7 @@ public enum MenuPanelAction: Equatable, Sendable {
     case allowAccessibility
     case allowMicrophone
     case openSpeechSettings
+    case open(MenuNote.Target)
 }
 
 public enum MenuPanelOutcome: Equatable, Sendable {
@@ -60,9 +62,12 @@ public final class MenuPanel {
     private var now: Date
     private var elapsed: TimeInterval = 0
     private var meetingElapsed: TimeInterval = 0
+    private var news: [MenuNote] = []
 
     @ObservationIgnored private let session: DictationSession
     @ObservationIgnored private let meetings: MeetingSession
+    @ObservationIgnored private let meetingLibrary: MeetingLibrary
+    @ObservationIgnored private let workNews: WorkNews
     @ObservationIgnored let microphones: Microphones
     @ObservationIgnored private let library: HistoryLibrary
     @ObservationIgnored private let permissions: Permissions
@@ -78,6 +83,8 @@ public final class MenuPanel {
     public init(
         session: DictationSession,
         meetings: MeetingSession,
+        meetingLibrary: MeetingLibrary,
+        workNews: WorkNews,
         microphones: Microphones,
         library: HistoryLibrary,
         permissions: Permissions,
@@ -89,6 +96,8 @@ public final class MenuPanel {
     ) {
         self.session = session
         self.meetings = meetings
+        self.meetingLibrary = meetingLibrary
+        self.workNews = workNews
         self.microphones = microphones
         self.library = library
         self.permissions = permissions
@@ -102,9 +111,39 @@ public final class MenuPanel {
 
     public var status: MenuPanelStatus {
         MenuPanelStatus(
-            AppStatus(session: session, permissions: permissions), meeting: meetings.state, hotkey: hotkey, elapsed: elapsed,
-            meetingElapsed: meetingElapsed
+            AppStatus(session: session, permissions: permissions), meeting: meetings.state, meetingWork: meetingWork, hotkey: hotkey,
+            elapsed: elapsed, meetingElapsed: meetingElapsed, now: now
         )
+    }
+
+    // A failed meeting first, while it stays failed; then work that ended since the panel was last opened.
+    public var notes: [MenuNote] {
+        let failed = failedMeetings
+        return failed + news.filter { note in !failed.contains { $0.target == note.target } }
+    }
+
+    // What the mark on the menu bar icon is for: missing access, a speech model that could not load, or a failed meeting.
+    public var attention: String? {
+        if !permissions.isAccessibilityAllowed { return AppStatus.accessibilityMissing.title }
+        if permissions.microphone == .denied { return AppStatus.microphoneMissing.title }
+        if case .failed = session.modelState { return AppStatus.modelFailed.title }
+        return failedMeetings.first?.state.label
+    }
+
+    private var failedMeetings: [MenuNote] {
+        meetingLibrary.entries.compactMap { entry in
+            guard case .meeting(let meeting, _) = entry, case .work(let work)? = meetingLibrary.state(of: meeting), work.problem != nil else { return nil }
+            return MenuNote(target: .meeting(meeting.id), title: MeetingFormat.title(meeting), state: work)
+        }
+    }
+
+    // The step under way in the meeting being processed: running before waiting, the newest meeting first.
+    private var meetingWork: WorkState {
+        let work = meetingLibrary.entries.compactMap { entry -> WorkState? in
+            guard case .meeting(let meeting, _) = entry, case .work(let work)? = meetingLibrary.state(of: meeting), work.problem == nil else { return nil }
+            return work
+        }
+        return work.first { $0.activity != nil } ?? work.first ?? .waiting(.turn)
     }
 
     public var dictation: DictationRow {
@@ -142,6 +181,7 @@ public final class MenuPanel {
     public var items: [MenuPanelItem] {
         var items: [MenuPanelItem] = []
         if status.fixTitle != nil { items.append(.fix) }
+        items += notes.map { .note($0.target) }
         if lastDictation != nil { items.append(.lastDictation) }
         if hasModeChoice {
             items.append(.mode)
@@ -162,6 +202,7 @@ public final class MenuPanel {
         permissions.refresh()
         session.refreshModeChoice()
         microphones.start()
+        news = workNews.take()
         tick()
         highlighted = initialHighlight
         ticking = Task { [weak self, clock] in
@@ -179,6 +220,7 @@ public final class MenuPanel {
         isModeListOpen = false
         isMicrophoneListOpen = false
         isCopied = false
+        news = []
         microphones.stop()
     }
 
@@ -203,6 +245,7 @@ public final class MenuPanel {
         case .fix:
             guard case .problem(_, let fix) = status else { return .stayOpen }
             return .close(then: fix)
+        case .note(let target): return .close(then: .open(target))
         case .lastDictation: return copyLastDictation()
         case .mode:
             isModeListOpen.toggle()
@@ -244,6 +287,7 @@ public final class MenuPanel {
     private var initialHighlight: MenuPanelItem? {
         let list = items
         if list.contains(.fix) { return .fix }
+        if let failed = failedMeetings.first { return .note(failed.target) }
         if session.phase == .recording || session.work == .waiting(.speechModel) { return .dictation }
         return list.contains(.lastDictation) ? .lastDictation : list.first
     }

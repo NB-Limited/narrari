@@ -12,6 +12,12 @@ public final class FileJob {
         public var work = WorkState.working(.transcribing, progress: 0)
     }
 
+    public struct Ended: Sendable, Equatable {
+        public let id: UUID
+        public let fileName: String
+        public let work: WorkState
+    }
+
     public enum Notice: Equatable {
         case failed(fileName: String, Problem)
         case busy
@@ -23,6 +29,8 @@ public final class FileJob {
 
     public private(set) var running: Running?
     public private(set) var notice: Notice?
+    // Every file that was saved or failed, oldest first; a cancelled one is left out.
+    public private(set) var ended: [Ended] = []
 
     @ObservationIgnored private let library: HistoryLibrary
     @ObservationIgnored private let retranscription: Retranscription
@@ -93,12 +101,14 @@ public final class FileJob {
                 }
                 Log.event("file-job-done")
                 await finish(id, notice: nil, saved: true)
+                ended.append(Ended(id: id, fileName: fileName, work: .done))
             } catch is CancellationError {
                 Log.event("file-job-cancelled")
             } catch {
                 Log.failure("file-job", error: error)
                 let problem = error.problem(or: TranscriberError.transcriptionFailed.problem)
                 await finish(id, notice: .failed(fileName: fileName, problem), saved: false)
+                ended.append(Ended(id: id, fileName: fileName, work: .failed(problem)))
             }
         }
     }
