@@ -205,17 +205,19 @@ func cleanupReload(rounds: Int, model: String, samplesPaths: [String]) async thr
 }
 
 func loadedParakeet(dictionary: DictionaryStore? = nil) async throws -> ParakeetTranscriber {
-    var vocabulary: Vocabulary?
-    if let dictionary {
-        let words = try dictionary.load().words
-        if !words.isEmpty {
-            let prepared = Vocabulary(store: .shared, settings: .shared)
-            let loadTime = await seconds { await prepared.prepare(words: words) }
-            print(String(format: "vocabulary of %d words ready in %.2fs", words.count, loadTime))
-            vocabulary = prepared
-        }
-    }
-    let transcriber = ParakeetTranscriber(store: .shared, settings: .shared, vocabulary: vocabulary) { state in
+    try await loadedParakeet(vocabulary: try await preparedVocabulary(dictionary), settings: .shared)
+}
+
+func preparedVocabulary(_ dictionary: DictionaryStore?) async throws -> Vocabulary? {
+    guard let words = try dictionary?.load().words, !words.isEmpty else { return nil }
+    let prepared = Vocabulary(store: .shared, settings: .shared)
+    let loadTime = await seconds { await prepared.prepare(words: words) }
+    print(String(format: "vocabulary of %d words ready in %.2fs", words.count, loadTime))
+    return prepared
+}
+
+func loadedParakeet(vocabulary: Vocabulary?, settings: SettingsStore, downloadsIfMissing: Bool = true) async throws -> ParakeetTranscriber {
+    let transcriber = ParakeetTranscriber(store: .shared, settings: settings, downloadsIfMissing: downloadsIfMissing, vocabulary: vocabulary) { state in
         if case .failed(let reason) = state { print("model failed: \(reason)") }
     }
     let loadTime = try await seconds { try await transcriber.load() }
@@ -465,7 +467,7 @@ let usage = """
            narrari-dev pipeline [--dictionary <folder>] [--model <id>] [--chat <address>] [--off] "<transcript>"
            narrari-dev remote [--dictionary <folder>] <address> <model> <audio file>
            narrari-dev preview-latency <audio file>...
-           narrari-dev dictation-replay [--history <folder>] [--model <id>] text|ahead <out folder>
+           narrari-dev dictation-replay [--history <folder>] [--model <id>] text|ahead|pieces <out folder>
            narrari-dev modes
            narrari-dev speed [--json]
            narrari-dev meeting replay [--minutes <n>] [--fast-ppm <n>] [--live | --live-until <minutes>]
@@ -496,7 +498,7 @@ do {
             await localEngine(model: cleanupModel)
         }
         await pipeline(arguments[1], engine: engine, dictionary: dictionary ?? .shared, isCleanupOn: !isCleanupOff)
-    case ("dictation-replay", 3) where ["text", "ahead"].contains(arguments[1]):
+    case ("dictation-replay", 3) where ["text", "ahead", "pieces"].contains(arguments[1]):
         try await dictationReplay(arguments[1], history: historyFolder, out: arguments[2], model: cleanupModel)
     case ("modes", 1): try modes()
     case ("speed", 1):
