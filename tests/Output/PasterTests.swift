@@ -105,7 +105,8 @@ struct PasterTests {
         #expect(pastes.posted == 1)
     }
 
-    @Test func paste_goes_ahead_after_a_second_of_held_keys() async {
+    // Command V would join the held keys and the app in front would ignore it, so nothing is posted and nothing reads as pasted.
+    @Test func keys_still_held_after_a_second_leave_the_text_on_the_clipboard_and_say_so() async {
         let paster = paster(.fixed(modifiersHeld: { true }))
         let pasting = Task { await paster.paste("Hello, Anna.") }
 
@@ -115,8 +116,9 @@ struct PasterTests {
             clock.advance(by: .milliseconds(20))
         }
 
-        #expect(await pasting.value == .pasted)
-        #expect(pastes.posted == 1)
+        #expect(await pasting.value == .copiedKeystrokeFailed)
+        #expect(pastes.posted == 0)
+        #expect(pasteboard.items() == [[PasteboardEntry(type: .string, data: Data("Hello, Anna.".utf8))]])
     }
 
     @Test func two_pastes_waiting_on_the_same_restore_still_give_the_clipboard_back() async {
