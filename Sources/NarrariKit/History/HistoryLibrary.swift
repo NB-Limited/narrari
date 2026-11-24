@@ -23,9 +23,7 @@ public final class HistoryLibrary {
     // Loading until the first read ends, then idle, or failed while the history cannot be read.
     public private(set) var load = WorkState.working(.loading)
     public private(set) var work: [UUID: EntryWork] = [:]
-    public var searchText = "" {
-        didSet { if searchText != oldValue { searchResults() } }
-    }
+    public var searchText = ""
     public var selection: UUID? {
         didSet { if selection != oldValue { pendingDeletion = nil } }
     }
@@ -36,29 +34,46 @@ public final class HistoryLibrary {
         didSet { searchResults() }
     }
     // Searched once per change of the entries, the query or the pending file, never per redraw.
-    public private(set) var results: [HistoryEntry] = []
+    public private(set) var results: [HistoryEntry] = [] {
+        didSet { grouped = nil }
+    }
 
     @ObservationIgnored private let store: HistoryStore
     @ObservationIgnored private let retranscription: Retranscription
     @ObservationIgnored public let apps: AppDirectory
     @ObservationIgnored private let activeDictation: @MainActor () -> UUID?
     @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private let clock: any Clock<Duration>
+    @ObservationIgnored private var finder = HistorySearch()
+    @ObservationIgnored private var grouped: (today: Date, days: [HistoryDay])?
 
     public init(
         store: HistoryStore,
         retranscription: Retranscription,
         apps: AppDirectory,
         activeDictation: @escaping @MainActor () -> UUID? = { nil },
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        clock: any Clock<Duration> = ContinuousClock()
     ) {
         self.store = store
         self.retranscription = retranscription
         self.apps = apps
         self.activeDictation = activeDictation
         self.now = now
+        self.clock = clock
     }
 
-    public var days: [HistoryDay] { HistoryDay.group(results, now: now()) }
+    // Grouped once per change of the results, and again when the day turns, so Today and Yesterday stay true.
+    public var days: [HistoryDay] {
+        // Read even when the grouping is held, so a view showing the days still redraws when the results change.
+        let results = results
+        let now = now()
+        let today = HistoryStore.localCalendar.startOfDay(for: now)
+        if let grouped, grouped.today == today { return grouped.days }
+        let days = HistoryDay.group(results, now: now)
+        grouped = (today, days)
+        return days
+    }
 
     public var selected: HistoryEntry? {
         guard let selection else { return nil }
@@ -99,7 +114,16 @@ public final class HistoryLibrary {
         selection = list[min(max(index, 0), list.count - 1)].id
     }
 
-    public func searchChanged() {
+    // From the search field, once per change of its text; a newer change cancels this one while it waits.
+    public func searchTyped() async {
+        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard (try? await clock.sleep(for: TextSearch.typingPause)) != nil else { return }
+        }
+        search()
+    }
+
+    public func search() {
+        searchResults()
         keepSelectionInResults()
     }
 
@@ -180,7 +204,7 @@ public final class HistoryLibrary {
 
     private func searchResults() {
         let shown = pending.flatMap { pending in entries.contains { $0.id == pending.id } ? nil : [pending] } ?? []
-        results = shown + HistorySearch.entries(entries, matching: searchText, apps: apps)
+        results = shown + finder.entries(entries, matching: searchText, apps: apps)
     }
 
     private func keepSelectionInResults() {

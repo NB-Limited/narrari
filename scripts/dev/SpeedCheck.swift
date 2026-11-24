@@ -15,6 +15,8 @@ enum SpeedRow: String, CaseIterable, Encodable {
     case historySearch500 = "history search, 500"
     case historySearch2000 = "history search, 2,000"
     case historySearch10000 = "history search, 10,000"
+    case historyFirstSearch10000 = "history search, first after launch, 10,000"
+    case historySearchMemory10000 = "history search, memory it holds, 10,000"
     case historyFirstList2000 = "history list, first read, 2,000"
     case historyFirstList10000 = "history list, first read, 10,000"
     case historyDays10000 = "history grouped by day, 10,000"
@@ -36,12 +38,14 @@ enum SpeedRow: String, CaseIterable, Encodable {
         case .historyAdd500: 1
         case .historyAdd2000: 2
         case .historyAdd10000: 10
-        case .historySearch500: 40
-        case .historySearch2000: 150
-        case .historySearch10000: 750
-        case .historyFirstList2000: 50
-        case .historyFirstList10000: 300
-        case .historyDays10000: 30
+        case .historySearch500: 1
+        case .historySearch2000: 3
+        case .historySearch10000: 16
+        case .historyFirstSearch10000: 70
+        case .historySearchMemory10000: 20
+        case .historyFirstList2000: 30
+        case .historyFirstList10000: 150
+        case .historyDays10000: 10
         case .cleanupLoad: 700
         case .cleanup15: 400
         case .cleanup66: 1_800
@@ -49,7 +53,7 @@ enum SpeedRow: String, CaseIterable, Encodable {
         }
     }
 
-    var unit: String { self == .meetingSearchMemory ? "MB" : "ms" }
+    var unit: String { [.meetingSearchMemory, .historySearchMemory10000].contains(self) ? "MB" : "ms" }
 }
 
 struct SpeedResult: Encodable {
@@ -115,10 +119,10 @@ struct SpeedCheck {
     }
 
     // In a fresh process each time, because this one reuses the pages earlier rows let go of.
-    static func searchMemory(_ root: URL) throws -> Double {
+    static func searchMemory(_ root: URL, option: String = "--search-memory") throws -> Double {
         let process = Process()
         process.executableURL = Bundle.main.executableURL
-        process.arguments = ["speed", "--search-memory", root.path]
+        process.arguments = ["speed", option, root.path]
         let output = Pipe()
         process.standardOutput = output
         try process.run()
@@ -172,8 +176,14 @@ struct SpeedCheck {
             if let listRow { add(listRow, try await Self.timed { _ = try await HistoryStore(root: root).entries() }) }
             let store = HistoryStore(root: root)
             let entries = try await store.entries().entries.filter(\.isFinished)
-            add(searchRow, await Self.timed { _ = HistorySearch.entries(entries, matching: SpeedText.found, apps: apps) })
-            if count == 10_000 { add(.historyDays10000, await Self.timed { _ = HistoryDay.group(entries, now: now) }) }
+            var search = HistorySearch()
+            _ = search.entries(entries, matching: SpeedText.found, apps: apps)
+            add(searchRow, await Self.timed { _ = search.entries(entries, matching: SpeedText.found, apps: apps) })
+            if count == 10_000 {
+                add(.historyFirstSearch10000, await Self.timed { _ = HistorySearch.entries(entries, matching: SpeedText.found, apps: apps) })
+                add(.historySearchMemory10000, try (0..<Self.runs).map { _ in try Self.searchMemory(root, option: "--history-search-memory") })
+                add(.historyDays10000, await Self.timed { _ = HistoryDay.group(entries, now: now) })
+            }
             // As a dictation writes it: its first line when it starts, its final line when it ends, then the list reads again.
             var index = count
             add(addRow, try await Self.timed {
@@ -261,6 +271,16 @@ func printSearchMemory(_ folder: String) async throws {
     let store = SpeedData.meetingStore(URL(filePath: folder))
     _ = try await MeetingSearch.hits(matching: SpeedText.miss, in: store)
     print(withExtendedLifetime(store) { memoryMegabytes().footprint - before })
+}
+
+// What the dictation search keeps in memory after its first search, beyond the dictations the list holds anyway.
+@MainActor
+func printHistorySearchMemory(_ folder: String) async throws {
+    let entries = try await HistoryStore(root: URL(filePath: folder)).entries().entries.filter(\.isFinished)
+    let before = memoryMegabytes().footprint
+    var search = HistorySearch()
+    _ = search.entries(entries, matching: SpeedText.found, apps: AppDirectory(folders: []))
+    print(withExtendedLifetime((entries, search)) { memoryMegabytes().footprint - before })
 }
 
 func printSpeedTable(_ results: [SpeedResult]) {
