@@ -34,6 +34,10 @@ public actor MeetingStore {
     private let trash: Trash
     private let changed: AsyncStream<Void>.Continuation
     private var folders: [UUID: URL] = [:]
+    // Each meeting's words for search with the stamps of the files they came from, read again once a stamp moves.
+    private var searchTexts: [UUID: (stamps: [FileStamp?], text: MeetingSearch.Text)] = [:]
+    // Each folder's meeting.json as last decoded, read again once its stamp moves.
+    private var decoded: [URL: (stamp: FileStamp, meeting: Meeting)] = [:]
 
     private static let meetingFile = "meeting.json"
     private static let transcriptFile = "transcript.json"
@@ -153,7 +157,29 @@ public actor MeetingStore {
     }
 
     public func text(_ document: Document, of id: UUID) throws -> String {
-        let url = try locate(id).folder.appending(path: document.rawValue)
+        try Self.readText(try locate(id).folder.appending(path: document.rawValue))
+    }
+
+    // As meetings(since:) lists them, each with its words; only a meeting whose files changed since the last search is read.
+    func searchable(since: Date?) throws -> [(meeting: Meeting, text: MeetingSearch.Text)] {
+        let meetings = try meetings(since: since).meetings
+        searchTexts = searchTexts.filter { folders[$0.key] != nil }
+        return try meetings.map { meeting in
+            try Task.checkCancellation()
+            guard let folder = folders[meeting.id] else { throw MeetingError.notFound }
+            let files = [Self.transcriptFile, Document.notes.rawValue, Document.summary.rawValue].map { folder.appending(path: $0) }
+            let stamps = files.map(FileStamp.init)
+            if let held = searchTexts[meeting.id], held.stamps == stamps { return (meeting, held.text) }
+            let text = MeetingSearch.Text(
+                transcript: { try JSONFile<[TranscriptSegment]>(files[0], empty: []).load() },
+                notes: { try Self.readText(files[1]) }, summary: { try Self.readText(files[2]) }
+            )
+            searchTexts[meeting.id] = (stamps, text)
+            return (meeting, text)
+        }
+    }
+
+    private static func readText(_ url: URL) throws -> String {
         guard FileManager.default.fileExists(atPath: url.path) else { return "" }
         return try String(contentsOf: url, encoding: .utf8)
     }
@@ -288,11 +314,18 @@ public actor MeetingStore {
             }
         }
         folders = Dictionary(readable.map { ($0.meeting.id, $0.folder) }) { first, _ in first }
+        let listed = Set(readable.map(\.folder))
+        decoded = decoded.filter { listed.contains($0.key) }
         return (readable, unreadable)
     }
 
     private func read(_ folder: URL) throws -> Meeting {
-        try Meeting(json: Data(contentsOf: folder.appending(path: Self.meetingFile)))
+        let url = folder.appending(path: Self.meetingFile)
+        let stamp = FileStamp(url)
+        if let stamp, let held = decoded[folder], held.stamp == stamp { return held.meeting }
+        let meeting = try Meeting(json: Data(contentsOf: url))
+        if let stamp { decoded[folder] = (stamp, meeting) }
+        return meeting
     }
 
     // Merged into the file on disk, so keys written by a later version stay.

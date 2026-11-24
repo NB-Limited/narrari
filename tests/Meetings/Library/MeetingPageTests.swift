@@ -129,6 +129,15 @@ struct MeetingPageTests {
         #expect(searched.copyText.hasPrefix("You: Then we plan for the fourteenth.\n\nSpeaker 2: The Roterdam hub"))
     }
 
+    @Test func the_line_under_the_playback_position_plays_and_none_while_paused() async throws {
+        let page = await page(try await processed())
+        let first = try #require(page.segments.first)
+
+        #expect(page.playingLines(at: first.start, isPlaying: true).contains(0))
+        #expect(!page.playingLines(at: first.end, isPlaying: true).contains(0))
+        #expect(page.playingLines(at: first.start, isPlaying: false).isEmpty)
+    }
+
     @Test func notes_are_saved_as_they_are_typed() async throws {
         let page = await page(try await processed())
 

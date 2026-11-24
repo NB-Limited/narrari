@@ -5,11 +5,13 @@ import Testing
 struct HistoryStoreTests {
     private let folder = TemporaryFolder()
     private let store: HistoryStore
+    private let utc: Calendar
     private let morning = try! Date("2026-11-19T09:30:00Z", strategy: .iso8601)
 
     init() {
         var utc = Calendar(identifier: .gregorian)
         utc.timeZone = TimeZone(identifier: "UTC")!
+        self.utc = utc
         store = HistoryStore(root: folder.url, calendar: utc)
     }
 
@@ -191,5 +193,21 @@ struct HistoryStoreTests {
         await #expect(throws: HistoryError.entryGone) { try await store.update(retranscribed) }
 
         #expect(try await store.entries().entries.isEmpty)
+    }
+
+    // The narrari command writes the same files from a process of its own.
+    @Test func lines_written_by_another_store_are_read_with_this_stores_own() async throws {
+        let outside = HistoryStore(root: folder.url, calendar: utc)
+        let first = entry(.pasted, text: "first")
+        try await store.append(first)
+        #expect(try await store.entries().entries.map(\.id) == [first.id])
+
+        let second = entry(.pasted, text: "second")
+        try await outside.append(second)
+        let third = entry(.pasted, text: "third")
+        try await store.append(third)
+        try await outside.delete(first)
+
+        #expect(Set(try await store.entries().entries.map(\.finalText)) == ["second", "third"])
     }
 }

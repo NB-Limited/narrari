@@ -154,6 +154,12 @@ public final class MeetingPage {
 
     public var matchLine: Int? { matches.indices.contains(matchIndex) ? matches[matchIndex] : nil }
 
+    // The lines under the playback position; two overlap when both sides talk at once.
+    public func playingLines(at position: TimeInterval, isPlaying: Bool) -> Set<Int> {
+        guard hasAudio, isPlaying else { return [] }
+        return Set(segments.indices.filter { segments[$0].start <= position && position < segments[$0].end })
+    }
+
     public var matchCount: String? {
         matches.isEmpty ? nil : "\(matchIndex + 1) of \(matches.count)"
     }

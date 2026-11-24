@@ -45,9 +45,16 @@ public final class CleanupEngineSlot {
 
     public var localModel: ModelReference { ModelReference(settings.value(CleanupSettings.localModel)) }
 
-    // Until the first load finishes, which on first run includes the download, dictations paste the raw transcript.
+    // An in-app model already on this Mac rests until the first dictation, summary or re-run asks for it, so it loads while
+    // the user speaks. One still to download starts now; until it finishes, dictations paste the raw transcript.
     public func start() {
-        reload()
+        let next = choose(localStatus.report)
+        if next?.runsInApp == true, ModelHub(store: store).cachedModelIDs().contains(localModel.id) {
+            engine.withLock { $0 = next }
+            isResting = true
+        } else {
+            use(next)
+        }
         let updates = SettingsChanges.updates(of: Self.followedKeys)
         following = Task { [weak self] in
             for await _ in updates { self?.reload() }
@@ -55,7 +62,10 @@ public final class CleanupEngineSlot {
     }
 
     public func reload() {
-        let next = choose(localStatus.report)
+        use(choose(localStatus.report))
+    }
+
+    private func use(_ next: (any CleanupEngine)?) {
         // Typing a chat address must not reload the in-app model that is in use.
         if let old = current as? LocalModelEngine, let new = next as? LocalModelEngine, old.name == new.name { return }
         let previous = engine.withLock { slot in

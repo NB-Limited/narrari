@@ -126,6 +126,18 @@ struct MeetingLibraryTests {
         #expect(library.selection == .meeting(plan.id))
     }
 
+    @Test func a_search_replaced_by_more_typing_leaves_the_list_alone() async throws {
+        try await saved("Delivery plan", in: "Zoom", hour: 1)
+        await library.refresh()
+        library.searchText = "delivery"
+
+        let replaced = Task { await library.searchTyped() }
+        replaced.cancel()
+        await replaced.value
+
+        #expect(library.hits == nil)
+    }
+
     @Test func recordings_dropped_together_each_become_a_meeting_in_imported_dated_by_their_file_and_their_steps_start() async throws {
         var files: [URL] = []
         for (name, day) in [("Hub walkthrough", morning), ("Kickoff", morning.addingTimeInterval(-86_400))] {
