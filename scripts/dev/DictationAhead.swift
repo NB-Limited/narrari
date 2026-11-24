@@ -25,7 +25,7 @@ func dictationReplayAhead(history: String, out: String, maxWords: Int = 40) asyn
         $0.durationMs >= 15_000 && $0.audioFailure == nil && FileManager.default.fileExists(atPath: store.audioURL(for: $0.id).path)
     }
     let speed = try? readLines(ChunkRow.self, from: folder.appending(path: "text-chunks.jsonl"))
-        .filter { $0.variant == "chunks-\(maxWords)" && $0.status == "cleaned" && !$0.seconds.isNaN }
+        .filter { $0.variant == "pipeline" && $0.status == "cleaned" && !$0.seconds.isNaN }
     let fit = speed.map { linearFit($0.map { (Double($0.measure.heardWords), $0.seconds) }) }
     let transcriber = try await loadedParakeet(dictionary: .shared)
     print(String(format: "%d recordings, load average %.1f, footprint %.0f MB", entries.count, loadAverage(), memoryMegabytes().footprint))

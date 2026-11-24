@@ -73,10 +73,65 @@ struct TextPipelineTests {
         settings.store.set(true, for: DictionarySettings.writesSpokenMarks)
         let onWithoutCleanup = try await run(.off(.switchedOff))
 
-        #expect(offWithCleanup.cleaned == [heard])
+        #expect(offWithCleanup.cleaned == heard.components(separatedBy: "\n"))
         #expect(offWithCleanup.final == heard)
         #expect(offWithoutCleanup.final == heard)
         #expect(onWithoutCleanup.final == "Hi team\nThe build is green.\nAs an outside service may write it.")
+    }
+
+    private static let first = "So the build is green on every machine we have and the tests all pass now."
+    private static let second = "Then we ship it to the store on Friday morning before the team meets for lunch."
+    private static let third = "After that we write the notes for the release and send them out to everyone."
+    private static let heard = [first, second, third].joined(separator: " ")
+
+    @Test func a_chunk_turned_down_keeps_its_heard_words_and_the_rest_is_cleaned() async throws {
+        let engine = FakeCleanupEngine { $0.hasPrefix("After") ? "No." : $0.uppercased() }
+
+        let result = try await pipeline(engine).run(Self.heard, prompt: .agentBrief, cleanup: .on)
+
+        #expect(engine.calls.map(\.transcript) == [Self.first + " " + Self.second, Self.third])
+        #expect(result.cleanup.status == .cleaned)
+        #expect(result.cleanup.reason == nil)
+        #expect(result.cleanup.text == (Self.first + " " + Self.second).uppercased() + " " + Self.third)
+    }
+
+    @Test func every_chunk_turned_down_skips_with_the_first_reason() async throws {
+        let engine = FakeCleanupEngine { $0.hasPrefix("So") ? "No." : "" }
+
+        let result = try await pipeline(engine).run(Self.heard, prompt: .tidy, cleanup: .on)
+
+        #expect(engine.calls.count == 2)
+        #expect(result.cleanup.status == .skipped)
+        #expect(result.cleanup.reason == .unlikeDictation)
+        #expect(result.cleanup.text == Self.heard)
+    }
+
+    @Test func a_short_dictation_is_cleaned_in_one_call_as_the_service_would() async throws {
+        let engine = FakeCleanupEngine { "  " + $0.uppercased() + "\n" }
+        let direct = await CleanupService(engine: engine, settings: settings.store, clock: TestClock())
+            .clean(Self.first, with: .tidy, spellings: ["Narrari"])
+
+        let result = try await pipeline(engine).run(Self.first, prompt: .tidy, cleanup: .on)
+
+        #expect(engine.calls.count == 2)
+        #expect(engine.calls[0] == engine.calls[1])
+        #expect(result.cleanup == direct)
+    }
+
+    @Test func stopping_during_a_chunk_asks_for_no_more() async throws {
+        let gate = Gate()
+        let engine = FakeCleanupEngine(gate: gate) { $0 }
+        let pipeline = try pipeline(engine)
+
+        let cleaning = Task { await pipeline.run(Self.heard, prompt: .tidy, cleanup: .on) }
+        await gate.waitForArrivals(1)
+        cleaning.cancel()
+        let result = await cleaning.value
+
+        #expect(engine.calls.count == 1)
+        #expect(result.cleanup.status == .skipped)
+        #expect(result.cleanup.reason == .hotkey)
+        #expect(result.finalText == Self.heard)
     }
 
     @Test func tidy_cleans_each_paragraph_on_its_own_and_a_rewriting_prompt_gets_the_whole_text() async throws {

@@ -24,6 +24,7 @@ Native macOS menu bar app for dictation and meeting notes. Swift 6, SwiftUI, App
 - `bash scripts/install.sh`: build, install to `/Applications`, open.
 - `swift build --product narrari-dev && .build/debug/narrari-dev meeting rig [--quick]`: records test sound through the real meeting recorder on BlackHole 16ch and scores each track; run it after any audio change. It never asks for access, changes no default device and puts BlackHole's rate back.
 - `swift build -c release --product narrari-dev && .build/release/narrari-dev speed [--json]`: times search, lists, history and clean-up on made-up data against the budgets in `scripts/dev/SpeedCheck.swift` and fails on a miss; run it after any change to a store or search. Not in CI, where shared runners make timings noise.
+- `swift build -c release --product narrari-dev && .build/release/narrari-dev dictation-replay text|ahead <out folder>`: replays your own dictations, `text` through clean-up whole against the app's pipeline, `ahead` as sentence runs seen while speaking; its files and output hold counts, times and 8 character ids only, never a word.
 - `/usr/bin/log show --last 5m --predicate 'subsystem == "com.nb-limited.narrari"'`: read the app's log. Use the full path, because zsh has its own `log`. A launch logs `timing launch-*` and `timing cold-start` as seconds since the process started; each meeting step logs `timing meeting-step-*`.
 
 `Narrari.xcodeproj` is generated from `project.yml` and is not committed.
