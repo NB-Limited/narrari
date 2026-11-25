@@ -5,6 +5,8 @@ import Testing
 struct CalendarLinkTests {
     private static let minute: TimeInterval = 60
 
+    private let settings = ThrowawaySettings()
+
     private func event(_ title: String, from start: TimeInterval, to end: TimeInterval, at time: Date, isAllDay: Bool = false) -> CalendarEvent {
         CalendarEvent(
             title: title, start: time.addingTimeInterval(start * Self.minute), end: time.addingTimeInterval(end * Self.minute),
@@ -22,7 +24,7 @@ struct CalendarLinkTests {
         let over = event("Standup", from: -16, to: -1, at: time)
 
         func found(in events: [CalendarEvent]) async -> String? {
-            await CalendarLink(source: FakeCalendar(events: events), ownerName: "Mila Novak").event(at: time)?.title
+            await CalendarLink(source: FakeCalendar(events: events), ownerName: "Mila Novak", settings: settings.store).event(at: time)?.title
         }
 
         #expect(await found(in: [holiday, review, later, over]) == "Design review")
@@ -30,14 +32,15 @@ struct CalendarLinkTests {
         #expect(await found(in: [holiday, later, over]) == nil)
     }
 
-    @Test func the_owner_invited_under_a_directory_spelling_is_not_among_the_people() async {
+    @Test func the_owner_invited_under_a_directory_spelling_or_a_name_they_chose_is_not_among_the_people() async {
         let time = Date(timeIntervalSince1970: 1_800_000_000)
         let event = CalendarEvent(
             title: "Review", start: time, end: time.addingTimeInterval(1800),
-            attendees: ["Novak,Milena M.M.", "Novak", "Petrova,Ana A.", "Mira Kostova"]
+            attendees: ["Novak,Milena M.M.", "Novak", "MN", "Petrova,Ana A.", "Mira Kostova"]
         )
+        settings.store.set(["mn"], for: MeetingsSettings.ownNames)
 
-        let found = await CalendarLink(source: FakeCalendar(events: [event]), ownerName: "Mila Novak").event(at: time)
+        let found = await CalendarLink(source: FakeCalendar(events: [event]), ownerName: "Mila Novak", settings: settings.store).event(at: time)
 
         #expect(found?.attendees == ["Novak", "Petrova,Ana A.", "Mira Kostova"])
     }

@@ -201,18 +201,20 @@ private struct LineEditor: View {
     }
 }
 
-// A speaker's name that opens the speaker menu: rename, merge, or "Not this person".
-struct SpeakerChip: View {
-    let speaker: Meeting.Speaker
-    let page: MeetingPage
+// A name on a Selection plate under the pointer, which opens a list from where it stands.
+struct NameChip: View {
+    let title: String
     let isLarge: Bool
+    let label: String
+    let hint: String
+    let anchor: Anchor
+    let action: () -> Void
 
-    @State private var anchor = Anchor()
     @State private var isHovered = false
 
     var body: some View {
-        Button(action: open) {
-            Text(speaker.name)
+        Button(action: action) {
+            Text(title)
                 .font(isLarge ? Typeface.bodyStrong : Typeface.smallStrong)
                 .foregroundStyle(isLarge || isHovered ? Color.ink : Color.ink2)
                 .padding(.horizontal, MeetingWindowMetrics.chipPadding)
@@ -224,9 +226,25 @@ struct SpeakerChip: View {
         .padding(.leading, -MeetingWindowMetrics.chipPadding)
         .onHover { isHovered = $0 }
         .background(AnchorView(anchor: anchor))
-        .accessibilityLabel(speaker.isGuess == true ? "\(speaker.name), Guess" : speaker.name)
+        .accessibilityLabel(label)
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint("Opens the speaker menu")
+        .accessibilityHint(hint)
+    }
+}
+
+// A speaker's name that opens the speaker menu: rename, merge, or "Not this person".
+struct SpeakerChip: View {
+    let speaker: Meeting.Speaker
+    let page: MeetingPage
+    let isLarge: Bool
+
+    @State private var anchor = Anchor()
+
+    var body: some View {
+        NameChip(
+            title: speaker.name, isLarge: isLarge, label: speaker.isGuess == true ? "\(speaker.name), Guess" : speaker.name,
+            hint: "Opens the speaker menu", anchor: anchor, action: open
+        )
     }
 
     private func open() {

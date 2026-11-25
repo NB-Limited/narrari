@@ -34,7 +34,7 @@ final class MeetingRig {
                 clock: recorderClock
             ),
             calls: CallDetector(processes: FakeProcesses(), settings: settings.store, clock: clock),
-            calendar: CalendarLink(source: calendar, ownerName: "Mila Novak"),
+            calendar: CalendarLink(source: calendar, ownerName: "Mila Novak", settings: settings.store),
             screen: ScreenWatch(watcher: watcher, clock: screenClock),
             names: CallWindowNames(source: FakeCallWindows(), settings: settings.store, clock: clock, ownerName: "Mila Novak"),
             permissions: permissions, processor: nil, liveText: nil, settings: settings.store, clock: clock,

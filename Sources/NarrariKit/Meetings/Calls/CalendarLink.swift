@@ -27,11 +27,13 @@ public struct CalendarLink: Sendable {
     private static let lead: TimeInterval = 5 * 60
 
     private let source: any CalendarSource
-    private let owner: OwnerName
+    private let ownerName: String
+    private let settings: SettingsStore
 
-    public init(source: any CalendarSource, ownerName: String) {
+    public init(source: any CalendarSource, ownerName: String, settings: SettingsStore) {
         self.source = source
-        owner = OwnerName(ownerName)
+        self.ownerName = ownerName
+        self.settings = settings
     }
 
     // Of several, the one that starts nearest the time, so a call opened early for the next event is not given the last one.
@@ -40,6 +42,7 @@ public struct CalendarLink: Sendable {
         let event = await source.events(from: time, to: time.addingTimeInterval(Self.lead))
             .filter { !$0.isAllDay && $0.end > time && $0.start <= time.addingTimeInterval(Self.lead) }
             .min { abs($0.start.timeIntervalSince(time)) < abs($1.start.timeIntervalSince(time)) }
+        let owner = OwnerName(ownerName, known: settings.value(MeetingsSettings.ownNames))
         return event.map {
             CalendarEvent(title: $0.title, start: $0.start, end: $0.end, isAllDay: $0.isAllDay, attendees: $0.attendees.filter { !owner.matches($0) })
         }

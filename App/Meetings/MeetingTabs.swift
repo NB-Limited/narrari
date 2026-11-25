@@ -312,7 +312,7 @@ private struct SpeakersTab: View {
                         VStack(alignment: .leading, spacing: MeetingWindowMetrics.speakerDetailTop) {
                             HStack(spacing: Space.s4 + Space.s2) {
                                 if row.speaker.id == MeetingTranscript.ownerID {
-                                    Text(MeetingPage.name(of: row.speaker)).font(Typeface.bodyStrong).foregroundStyle(Color.ink)
+                                    OwnerChip(page: page)
                                 } else {
                                     SpeakerChip(speaker: row.speaker, page: page, isLarge: true)
                                 }
@@ -332,6 +332,29 @@ private struct SpeakersTab: View {
                     .font(Typeface.small)
                     .foregroundStyle(Color.muted)
                     .padding(.top, MeetingWindowMetrics.quietTop)
+            }
+        }
+    }
+}
+
+// "You", which opens the invited names when there are any, to say which of them is the owner.
+private struct OwnerChip: View {
+    let page: MeetingPage
+
+    @State private var anchor = Anchor()
+
+    var body: some View {
+        let names = page.invitedNames
+        if names.isEmpty {
+            Text("You").font(Typeface.bodyStrong).foregroundStyle(Color.ink)
+        } else {
+            NameChip(title: "You", isLarge: true, label: "You", hint: "Opens the invited names, to choose yours", anchor: anchor) {
+                guard let view = anchor.view else { return }
+                let rows = names.enumerated().map { DropdownRow(title: $1, group: $0 == 0 ? "Invited as" : nil) }
+                Dropdown.shared.open(label: "Your name among the invited", rows: rows, chosen: nil, from: view) { index in
+                    guard names.indices.contains(index) else { return }
+                    Task { await page.ownerIs(names[index]) }
+                }
             }
         }
     }

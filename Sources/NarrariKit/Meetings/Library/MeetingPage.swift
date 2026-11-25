@@ -330,6 +330,23 @@ public final class MeetingPage {
         redoing != nil || MeetingProcessing.Step.allCases.contains { [.running, .waiting].contains(meeting.steps[$0].status) }
     }
 
+    // The invited names the owner may say are their own.
+    public var invitedNames: [String] { meeting.attendees.map(\.name) }
+
+    // The name leaves this meeting's people and is left out of every later meeting's.
+    public func ownerIs(_ name: String) async {
+        let known = settings.value(MeetingsSettings.ownNames)
+        if !known.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
+            settings.set(known + [name], for: MeetingsSettings.ownNames)
+        }
+        do {
+            try await store.update(meeting.id) { $0.attendees.removeAll { $0.name.caseInsensitiveCompare(name) == .orderedSame } }
+        } catch {
+            Log.failure("meeting-own-name-save", error: error)
+        }
+        await load()
+    }
+
     public func menu(for speaker: Meeting.Speaker, query: String) -> [SpeakerMenu.Row] {
         SpeakerMenu.rows(for: speaker, in: meeting, people: people, query: query)
     }

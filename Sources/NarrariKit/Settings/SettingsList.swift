@@ -40,6 +40,7 @@ public enum SettingsList {
         MeetingsSettings.bar,
         MeetingsSettings.readsCallWindowNames,
         MeetingsSettings.ignoredApps,
+        MeetingsSettings.ownNames,
         MeetingsSettings.audioRetentionDays,
         MeetingsSettings.hotkeyKeyCode,
         MeetingsSettings.hotkeyModifiers,

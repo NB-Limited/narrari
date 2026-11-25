@@ -64,7 +64,7 @@ struct MeetingSessionTests {
                 freeSpace: { _ in 10_000_000_000 }, hostNow: { [replay] in replay.clock.hostTime }, clock: TestClock()
             ),
             calls: CallDetector(processes: processes, settings: settings.store, clock: callClock),
-            calendar: CalendarLink(source: FakeCalendar(events: [event]), ownerName: "Mila Novak"),
+            calendar: CalendarLink(source: FakeCalendar(events: [event]), ownerName: "Mila Novak", settings: settings.store),
             screen: ScreenWatch(watcher: watcher, clock: screenClock),
             names: CallWindowNames(source: windows, settings: settings.store, clock: namesClock, ownerName: "Mila Novak"),
             permissions: permissions, processor: processor, liveText: nil, settings: settings.store, clock: clock,

@@ -153,7 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return MeetingSession(
             store: store, recorder: recorder,
             calls: CallDetector(processes: SystemAudioProcesses(), settings: .shared, clock: ContinuousClock()),
-            calendar: CalendarLink(source: EventKitCalendar(), ownerName: NSFullUserName()),
+            calendar: CalendarLink(source: EventKitCalendar(), ownerName: NSFullUserName(), settings: .shared),
             screen: ScreenWatch(watcher: SkyLightScreenWatcher(), clock: ContinuousClock()),
             names: CallWindowNames(source: AccessibilityCallWindows(), settings: .shared, clock: ContinuousClock(), ownerName: NSFullUserName()),
             permissions: permissions, processor: processing,

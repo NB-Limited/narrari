@@ -74,6 +74,18 @@ struct MeetingPageTests {
         return page
     }
 
+    @Test func an_invited_name_the_owner_says_is_theirs_leaves_the_meeting_and_is_remembered() async throws {
+        var meeting = Meeting(title: "Delivery plan", startedAt: .now, app: "", source: .call, template: "general", state: .ready)
+        meeting.attendees = ["mn", "Ana Petrova"].map { Meeting.Attendee(name: $0, source: .calendar) }
+        try await store.create(meeting, appName: "Zoom")
+        let page = await page(meeting)
+
+        await page.ownerIs("mn")
+
+        #expect(page.invitedNames == ["Ana Petrova"])
+        #expect(settings.store.value(MeetingsSettings.ownNames) == ["mn"])
+    }
+
     @Test func an_edited_line_survives_finding_speakers_again_and_is_marked_until_transcribing_again_replaces_it() async throws {
         let page = await page(try await processed())
         let line = try #require(page.segments.firstIndex { $0.text.hasPrefix("The Roterdam") })

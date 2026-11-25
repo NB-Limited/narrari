@@ -47,14 +47,14 @@ public final class CallWindowNames {
     private let source: any CallWindowSource
     private let settings: SettingsStore
     private let clock: any Clock<Duration>
-    private let ownerName: OwnerName
+    private let ownerName: String
     private var reading: Task<Void, Never>?
 
     public init(source: any CallWindowSource, settings: SettingsStore, clock: any Clock<Duration>, ownerName: String) {
         self.source = source
         self.settings = settings
         self.clock = clock
-        self.ownerName = OwnerName(ownerName)
+        self.ownerName = ownerName
     }
 
     public func start(app: String, found: @escaping @MainActor ([String]) async -> Void) {
@@ -91,7 +91,8 @@ public final class CallWindowNames {
                 continue
             }
             listed = true
-            let names = texts.compactMap(person)
+            let owner = OwnerName(ownerName, known: settings.value(MeetingsSettings.ownNames))
+            let names = texts.compactMap { person($0, owner: owner) }
             if !names.isEmpty { await found(names) }
         } while (try? await clock.sleep(for: Self.interval)) != nil
         if wasAssistive == false { await source.setAssistiveMode(false, of: app) }
@@ -99,7 +100,7 @@ public final class CallWindowNames {
     }
 
     // "Ana Petrova (Host)" is Ana Petrova; a name labelled "me" or "You", or the owner's own, is the owner.
-    private func person(_ text: String) -> String? {
+    private func person(_ text: String, owner: OwnerName) -> String? {
         var name = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if name.hasSuffix(")"), let open = name.range(of: " (", options: .backwards) {
             let tags = name[open.upperBound..<name.index(before: name.endIndex)].split(separator: ",")
@@ -109,7 +110,7 @@ public final class CallWindowNames {
                 name = String(name[..<open.lowerBound])
             }
         }
-        guard !name.isEmpty, !ownerName.matches(name) else { return nil }
+        guard !name.isEmpty, !owner.matches(name) else { return nil }
         return name
     }
 }
