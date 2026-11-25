@@ -47,14 +47,14 @@ public final class CallWindowNames {
     private let source: any CallWindowSource
     private let settings: SettingsStore
     private let clock: any Clock<Duration>
-    private let ownerName: String
+    private let ownerName: OwnerName
     private var reading: Task<Void, Never>?
 
     public init(source: any CallWindowSource, settings: SettingsStore, clock: any Clock<Duration>, ownerName: String) {
         self.source = source
         self.settings = settings
         self.clock = clock
-        self.ownerName = ownerName
+        self.ownerName = OwnerName(ownerName)
     }
 
     public func start(app: String, found: @escaping @MainActor ([String]) async -> Void) {
@@ -109,23 +109,8 @@ public final class CallWindowNames {
                 name = String(name[..<open.lowerBound])
             }
         }
-        guard !name.isEmpty, !isOwner(name) else { return nil }
+        guard !name.isEmpty, !ownerName.matches(name) else { return nil }
         return name
-    }
-
-    // A company list may read "Novak, Milena M." for Mila Novak: a word in common, and each other word of the owner's
-    // name starting as one of the listed name's does.
-    private func isOwner(_ name: String) -> Bool {
-        if name.caseInsensitiveCompare(ownerName) == .orderedSame { return true }
-        let own = Self.words(ownerName), listed = Self.words(name)
-        guard !own.isDisjoint(with: listed) else { return false }
-        let starts = Set(listed.subtracting(own).compactMap(\.first))
-        return own.subtracting(listed).allSatisfy { $0.first.map(starts.contains) == true }
-    }
-
-    private static func words(_ name: String) -> Set<String> {
-        let folded = name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
-        return Set(folded.split { !$0.isLetter }.filter { $0.count > 1 }.map(String.init))
     }
 }
 

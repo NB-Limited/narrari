@@ -27,15 +27,21 @@ public struct CalendarLink: Sendable {
     private static let lead: TimeInterval = 5 * 60
 
     private let source: any CalendarSource
+    private let owner: OwnerName
 
-    public init(source: any CalendarSource) {
+    public init(source: any CalendarSource, ownerName: String) {
         self.source = source
+        owner = OwnerName(ownerName)
     }
 
     // Of several, the one that starts nearest the time, so a call opened early for the next event is not given the last one.
+    // A calendar that does not know the invite is the owner's lists them among the people; they are left out here.
     public func event(at time: Date) async -> CalendarEvent? {
-        await source.events(from: time, to: time.addingTimeInterval(Self.lead))
+        let event = await source.events(from: time, to: time.addingTimeInterval(Self.lead))
             .filter { !$0.isAllDay && $0.end > time && $0.start <= time.addingTimeInterval(Self.lead) }
             .min { abs($0.start.timeIntervalSince(time)) < abs($1.start.timeIntervalSince(time)) }
+        return event.map {
+            CalendarEvent(title: $0.title, start: $0.start, end: $0.end, isAllDay: $0.isAllDay, attendees: $0.attendees.filter { !owner.matches($0) })
+        }
     }
 }

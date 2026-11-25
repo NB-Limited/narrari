@@ -32,11 +32,13 @@ public enum MeetingFormat {
         return minutes < 60 ? "\(minutes) min" : "\(minutes / 60) h " + String(format: "%02d", minutes % 60) + " min"
     }
 
-    // The people heard by name, then those invited; the owner and numbered speakers are left out.
+    // The people heard by name, then those invited; the owner, also as an older meeting's invite lists them, and
+    // numbered speakers are left out.
     public static func people(of meeting: Meeting) -> [String] {
         var names: [String] = []
+        let owner = meeting.speakers.first { $0.id == MeetingTranscript.ownerID }.map { OwnerName($0.name) }
         let others = meeting.speakers.filter { $0.id != MeetingTranscript.ownerID && !isNumbered($0) }.map(\.name)
-        for name in others + meeting.attendees.map(\.name)
+        for name in others + meeting.attendees.map(\.name).filter({ owner?.matches($0) != true })
         where !names.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
             names.append(name)
         }

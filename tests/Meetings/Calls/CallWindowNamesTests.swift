@@ -41,17 +41,6 @@ struct CallWindowNamesTests {
         #expect(heard.names == [["Ana Petrova", "Boris Ivanov", "Vera Kostova (Acme)"]])
     }
 
-    @Test func the_owner_listed_the_way_a_company_directory_spells_them_is_left_out() async {
-        windows.state.withLock {
-            $0.windows[Self.zoom] = FakeCallWindows.zoom(["Novak,Milena M.M.", "Novak", "Petrova,Ana A.", "Mira Kostova"])
-        }
-
-        await firstRead(of: Self.zoom)
-        await names.stop()
-
-        #expect(heard.names == [["Novak", "Petrova,Ana A.", "Mira Kostova"]])
-    }
-
     @Test func reads_teams_in_its_assistive_mode_and_puts_the_mode_back_at_stop() async {
         windows.state.withLock {
             $0.windows[Self.teams] = FakeCallWindows.teams(joined: ["Mila Novak (You)", "Ana Petrova (Organiser)"], invited: ["Boris Ivanov"])
