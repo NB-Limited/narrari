@@ -26,7 +26,10 @@ final class RecorderPill {
         panel.hasShadow = false
         panel.alphaValue = 0
         panel.contentView = NSHostingView(
-            rootView: PillHost(session: session, meeting: meeting, surfaces: surfaces, looks: looks, bottomInset: Self.shadowRoom)
+            rootView: PillHost(
+                session: session, meeting: meeting, surfaces: surfaces, looks: looks, bottomInset: Self.shadowRoom,
+                onPointer: { [panel] in panel.pointer(isOnSurface: $0) }
+            )
                 .followsMotion(motion)
         )
         track()
@@ -39,7 +42,7 @@ final class RecorderPill {
         } onChange: { [weak self] in
             Task { @MainActor in self?.track() }
         }
-        panel.ignoresMouseEvents = !takesClicks
+        panel.takeClicks(takesClicks)
         if isVisible, !panel.isShown, let screen = NSScreen.main?.visibleFrame {
             panel.setFrameOrigin(NSPoint(
                 x: screen.midX - Self.size.width / 2,
@@ -56,6 +59,7 @@ private struct PillHost: View {
     let surfaces: MeetingSurfaces
     let looks: PillLookModel
     let bottomInset: CGFloat
+    let onPointer: (Bool) -> Void
 
     @State private var last: PillState?
     @State private var listeningSince: Date?
@@ -79,6 +83,7 @@ private struct PillHost: View {
             } else if let bar = surfaces.pill {
                 MeetingCapsule(bar: bar, meeting: meeting, look: looks.look, onClick: surfaces.barClicked)
                     .environment(\.pillLevel, .live { [meeting] in meeting.level })
+                    .background(PointerArea(onChange: onPointer))
                     .transition(PillPresence.transition(reduceMotion: reduceMotion))
             }
         }

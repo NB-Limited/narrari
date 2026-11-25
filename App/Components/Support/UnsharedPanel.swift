@@ -19,6 +19,22 @@ class UnsharedPanel: NSPanel {
         sharingType = .none
     }
 
+    private var takesClicks = false
+    private var isPointerOnSurface = false
+
+    // Clicks reach the panel only while the pointer is on its surface, so the clear room around it never covers
+    // what lies under it, such as the Dock.
+    func takeClicks(_ takes: Bool) {
+        takesClicks = takes
+        if !takes { isPointerOnSurface = false }
+        ignoresMouseEvents = !(takesClicks && isPointerOnSurface)
+    }
+
+    func pointer(isOnSurface: Bool) {
+        isPointerOnSurface = isOnSurface
+        ignoresMouseEvents = !(takesClicks && isPointerOnSurface)
+    }
+
     override var canBecomeKey: Bool { isKeyable }
     override var canBecomeMain: Bool { false }
 

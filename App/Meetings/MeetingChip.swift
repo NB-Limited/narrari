@@ -21,7 +21,10 @@ final class MeetingChip {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.hasShadow = false
         panel.alphaValue = 0
-        panel.contentView = NSHostingView(rootView: ChipHost(meeting: meeting, surfaces: surfaces, looks: looks).followsMotion(motion))
+        panel.contentView = NSHostingView(
+            rootView: ChipHost(meeting: meeting, surfaces: surfaces, looks: looks) { [panel] in panel.pointer(isOnSurface: $0) }
+                .followsMotion(motion)
+        )
         track()
     }
 
@@ -31,7 +34,7 @@ final class MeetingChip {
         } onChange: { [weak self] in
             Task { @MainActor in self?.track() }
         }
-        panel.ignoresMouseEvents = bar?.takesClicks != true
+        panel.takeClicks(bar?.takesClicks == true)
         if bar != nil, !panel.isShown { panel.placeInCorner(shadowRoom: Self.shadowRoom) }
         panel.present(bar != nil, over: bar != nil ? PillMotion.appearFade : PillMotion.leave, reducedMotion: motion.isOn)
     }
@@ -52,6 +55,7 @@ private struct ChipHost: View {
     let meeting: MeetingSession
     let surfaces: MeetingSurfaces
     let looks: PillLookModel
+    let onPointer: (Bool) -> Void
 
     @Environment(\.reducesMotion) private var reduceMotion
 
@@ -60,7 +64,10 @@ private struct ChipHost: View {
             if let bar = surfaces.chip {
                 MeetingChipView(bar: bar, isOpen: surfaces.isChipOpen, meeting: meeting, look: looks.look, onClick: surfaces.barClicked)
                     .environment(\.pillLevel, .live { [meeting] in meeting.level })
-                    .background(PointerArea { surfaces.pointer(isInside: $0) })
+                    .background(PointerArea {
+                        surfaces.pointer(isInside: $0)
+                        onPointer($0)
+                    })
                     .transition(PillPresence.transition(reduceMotion: reduceMotion, anchor: .topTrailing))
             }
         }
