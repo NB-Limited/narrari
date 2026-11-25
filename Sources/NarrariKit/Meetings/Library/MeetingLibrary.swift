@@ -226,6 +226,20 @@ public final class MeetingLibrary {
         await refresh()
     }
 
+    // A row's menu, its summary and transcript read as the page's Copy buttons copy them, so the meeting need not be open.
+    public func menu(for meeting: Meeting) async -> [RowMenu.Row] {
+        var summary = ""
+        var transcript = ""
+        do {
+            let read = try await store.meeting(meeting.id)
+            summary = SummaryLayout.plain(try await store.text(.summary, of: meeting.id))
+            transcript = MeetingPage.transcriptText(of: try await store.transcript(of: meeting.id), speakers: read.speakers)
+        } catch {
+            Log.failure("meeting-menu-read", error: error)
+        }
+        return RowMenu.meeting(meeting, summary: summary, transcript: transcript, isRecording: !canDelete(meeting.id))
+    }
+
     // Not the one recording, whose files are still being written.
     public func canDelete(_ id: UUID) -> Bool {
         id != recording()

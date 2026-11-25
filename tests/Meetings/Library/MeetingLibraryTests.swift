@@ -65,6 +65,31 @@ struct MeetingLibraryTests {
         #expect(listed.first == ["Microsoft Teams", "Hub walkthrough", "Weekly product sync"])
     }
 
+    @Test func a_rows_menu_copies_the_summary_and_the_transcript_by_speaker_as_the_page_does() async throws {
+        var meeting = try await saved("Delivery plan", in: "Zoom", hour: 0)
+        meeting = try await store.update(meeting.id) { meeting in
+            meeting.speakers = [.init(id: "speaker-2", name: "Lena Fischer")]
+            return meeting
+        }
+        let summary = "## Decisions\n\n- **Ship** on Friday\n"
+        try await store.write(summary, to: .summary, of: meeting.id)
+        try await store.write([
+            TranscriptSegment(start: 0, end: 1, speaker: MeetingTranscript.ownerID, text: "Shall we start?", track: .mic),
+            TranscriptSegment(start: 1, end: 2, speaker: "speaker-2", text: "Yes.", track: .system),
+            TranscriptSegment(start: 2, end: 3, speaker: "speaker-2", text: "Friday works.", track: .system)
+        ], of: meeting.id)
+
+        let copies = await library.menu(for: meeting).compactMap { row in
+            if case .copy(let text) = row.action { return [row.title, text] } else { return nil }
+        }
+
+        #expect(copies == [
+            ["Copy for an agent", RecordKind.meetings.showLine(meeting.id)],
+            ["Copy summary", SummaryLayout.plain(summary)],
+            ["Copy transcript", "You: Shall we start?\n\nLena Fischer: Yes. Friday works."]
+        ])
+    }
+
     @Test func a_meeting_waiting_for_a_model_says_so_then_reads_downloading_while_it_downloads() async throws {
         var meeting = try await saved("Weekly", in: "Zoom", hour: 0)
         meeting.steps.speakers = Meeting.Step(.waiting, for: .speakerModel)

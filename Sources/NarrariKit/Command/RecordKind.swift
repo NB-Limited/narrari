@@ -20,6 +20,11 @@ public enum RecordKind: String, Sendable, CaseIterable {
         }
     }
 
+    // The line an AI tool with a terminal runs to read one meeting or dictation, as `show` reads it.
+    public func showLine(_ id: UUID) -> String {
+        "narrari \(rawValue) show \(id.uuidString)"
+    }
+
     var singular: String {
         switch self {
         case .meetings: "meeting"

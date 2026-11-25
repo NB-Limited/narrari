@@ -79,9 +79,11 @@ public final class MeetingPage {
 
     public var isRecording: Bool { meeting.state == .recording }
 
+    public var turns: [Turn] { Self.turns(of: segments, speakers: meeting.speakers) }
+
     // Lines of one speaker in a row read as one turn.
-    public var turns: [Turn] {
-        let names = Dictionary(meeting.speakers.map { ($0.id, $0) }) { first, _ in first }
+    nonisolated static func turns(of segments: [TranscriptSegment], speakers: [Meeting.Speaker]) -> [Turn] {
+        let names = Dictionary(speakers.map { ($0.id, $0) }) { first, _ in first }
         var turns: [Turn] = []
         for (index, segment) in segments.enumerated() {
             if let last = turns.last, last.speaker.id == segment.speaker {
@@ -113,9 +115,11 @@ public final class MeetingPage {
         }
     }
 
+    public var transcriptText: String { Self.transcriptText(of: segments, speakers: meeting.speakers) }
+
     // "Maria Petrova: …" a turn, a blank line between turns.
-    public var transcriptText: String {
-        turns.map { turn in
+    nonisolated static func transcriptText(of segments: [TranscriptSegment], speakers: [Meeting.Speaker]) -> String {
+        turns(of: segments, speakers: speakers).map { turn in
             "\(Self.name(of: turn.speaker)): \(turn.lines.map(\.segment.text).joined(separator: " "))"
         }
         .joined(separator: "\n\n")
