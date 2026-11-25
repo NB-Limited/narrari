@@ -35,7 +35,7 @@ public struct Meeting: Codable, Sendable, Equatable {
             id: String, name: String, personId: UUID? = nil, suggestion: UUID? = nil, isGuess: Bool? = nil, isNamedByUser: Bool? = nil
         ) {
             self.id = id
-            self.name = name
+            self.name = PersonName.plain(name)
             self.personId = personId
             self.suggestion = suggestion
             self.isGuess = isGuess
@@ -70,7 +70,7 @@ public struct Meeting: Codable, Sendable, Equatable {
         public var source: Source
 
         public init(name: String, source: Source) {
-            self.name = name
+            self.name = PersonName.plain(name)
             self.source = source
         }
 
@@ -223,8 +223,16 @@ public struct Meeting: Codable, Sendable, Equatable {
         app = try fields.decode(String.self, forKey: .app)
         source = try fields.decode(Source.self, forKey: .source)
         attendees = try fields.decode([Attendee].self, forKey: .attendees)
-        speakers = try fields.decode([Speaker].self, forKey: .speakers)
-        speakerEdits = try fields.decodeIfPresent([SpeakerEdit].self, forKey: .speakerEdits) ?? []
+        // Names saved surname first, before they were written one way, read like the rest.
+        speakers = try fields.decode([Speaker].self, forKey: .speakers).map { speaker in
+            var speaker = speaker
+            speaker.name = PersonName.plain(speaker.name)
+            return speaker
+        }
+        speakerEdits = try fields.decodeIfPresent([SpeakerEdit].self, forKey: .speakerEdits)?.map { edit in
+            guard case .named(let name, let person) = edit.change else { return edit }
+            return SpeakerEdit(speaker: edit.speaker, change: .named(name: PersonName.plain(name), person: person))
+        } ?? []
         steps = try fields.decode(Steps.self, forKey: .steps)
         template = try fields.decode(String.self, forKey: .template)
         summaryModel = try fields.decodeIfPresent(String.self, forKey: .summaryModel) ?? ""
@@ -283,7 +291,7 @@ extension Meeting {
     @discardableResult
     mutating func addAttendees(_ names: [String], from source: Attendee.Source) -> Bool {
         let count = attendees.count
-        for name in names where !attendees.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+        for name in names.map(PersonName.plain) where !attendees.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
             attendees.append(Attendee(name: name, source: source))
         }
         return attendees.count > count
