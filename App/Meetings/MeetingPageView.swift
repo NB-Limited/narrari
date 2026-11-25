@@ -354,27 +354,8 @@ private struct MeetingToolbar: View {
         }
     }
 
-    // The folders with the current one checked, then a new one by name.
     private func openFolders() {
         guard let view = folderAnchor.view else { return }
-        let id = page.meeting.id
-        let current = library.entries.first { $0.id == .meeting(id) }?.folder
-        let folders = library.folders
-        let rows = folders.map { DropdownRow(title: $0) } + [DropdownRow(title: "New folder…")]
-        Dropdown.shared.open(
-            label: "Move to folder", rows: rows, chosen: folders.firstIndex { $0 == current }, from: view, alignment: .trailing
-        ) { index in
-            guard folders.indices.contains(index) else { return newFolder(id, from: view) }
-            Task { await library.move(id, toFolder: folders[index]) }
-        }
-    }
-
-    private func newFolder(_ id: UUID, from view: NSView) {
-        let field = DropdownField(placeholder: "Folder name") { typed in
-            let name = typed.trimmingCharacters(in: .whitespaces)
-            guard !name.isEmpty else { return [] }
-            return [DropdownRow(title: "Move to “\(name)”", action: { Task { await library.move(id, toFolder: name) } })]
-        }
-        Task { @MainActor in Dropdown.shared.open(label: "New folder", field: field, from: view, alignment: .trailing) }
+        FolderMenu.open(page.meeting.id, in: library, from: view)
     }
 }

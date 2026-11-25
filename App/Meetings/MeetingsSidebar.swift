@@ -9,6 +9,8 @@ struct MeetingsSidebar: View {
     let onImport: () -> Void
     let onSettings: () -> Void
 
+    @State private var anchors = RowAnchors<MeetingLibrary.EntryID>()
+
     var body: some View {
         VStack(spacing: 0) {
             TextInput(
@@ -73,6 +75,11 @@ struct MeetingsSidebar: View {
                 }
                 if let selection = library.selection { proxy.scrollTo(selection) }
             }
+            .onKeyPress(keys: [.return], phases: .down) { press in
+                guard press.modifiers == .control, let entry = library.selected else { return .ignored }
+                openMenu(entry)
+                return .handled
+            }
             .onDeleteCommand {
                 guard case .meeting(let id) = library.selection, library.canDelete(id) else { return }
                 library.pendingDeletion = id
@@ -90,8 +97,29 @@ struct MeetingsSidebar: View {
             MeetingRow(entry: entry, library: library, session: session, isSelected: entry.id == library.selection) {
                 library.selection = entry.id
             }
+            .overlay { RowMenuArea(anchor: anchors.anchor(entry.id)) { openMenu(entry) } }
+            .accessibilityAction(.showMenu) { openMenu(entry) }
             .padding(.bottom, WindowMetrics.itemGap)
             .id(entry.id)
+        }
+    }
+
+    // Read when it opens, so Copy summary and Copy transcript show only when there is one to copy.
+    private func openMenu(_ entry: MeetingLibrary.Entry) {
+        guard case .meeting(let meeting, _) = entry else { return }
+        Task {
+            let rows = await library.menu(for: meeting)
+            guard let view = anchors.view(entry.id) else { return }
+            Dropdown.shared.open(rows, label: "Meeting actions", from: view) { action in
+                switch action {
+                case .togglePin: Task { await library.togglePin(meeting.id) }
+                case .moveToFolder: Task { @MainActor in FolderMenu.open(meeting.id, in: library, from: view) }
+                case .delete:
+                    library.selection = entry.id
+                    library.pendingDeletion = meeting.id
+                case .copy: return
+                }
+            }
         }
     }
 }

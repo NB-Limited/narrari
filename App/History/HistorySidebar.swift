@@ -12,6 +12,8 @@ struct HistorySidebar: View {
     let onTranscribeFile: () -> Void
     let onSettings: () -> Void
 
+    @State private var anchors = RowAnchors<UUID>()
+
     var body: some View {
         VStack(spacing: 0) {
             TextInput(
@@ -61,6 +63,8 @@ struct HistorySidebar: View {
                                 entry: entry, source: EntryFormat.source(entry, apps: library.apps),
                                 isSelected: entry.id == library.selection, isPending: entry.id == library.pending?.id
                             ) { select(entry) }
+                                .overlay { RowMenuArea(anchor: anchors.anchor(entry.id)) { openMenu(entry) } }
+                                .accessibilityAction(.showMenu) { openMenu(entry) }
                                 .padding(.bottom, WindowMetrics.itemGap)
                                 .id(entry.id)
                         }
@@ -86,7 +90,11 @@ struct HistorySidebar: View {
                 onSelect()
                 if let selection = library.selection { proxy.scrollTo(selection) }
             }
-            .onKeyPress(keys: [.space, .return]) { _ in
+            .onKeyPress(keys: [.space, .return]) { press in
+                if press.modifiers == .control, press.key == .return, let entry = library.selected {
+                    openMenu(entry)
+                    return .handled
+                }
                 guard library.selected.map(library.hasAudio) == true else { return .ignored }
                 playback.toggle()
                 return .handled
@@ -110,5 +118,14 @@ struct HistorySidebar: View {
     private func select(_ entry: HistoryEntry) {
         library.selection = entry.id
         onSelect()
+    }
+
+    private func openMenu(_ entry: HistoryEntry) {
+        guard let view = anchors.view(entry.id) else { return }
+        Dropdown.shared.open(RowMenu.dictation(entry, canDelete: library.canDelete(entry)), label: "Dictation actions", from: view) { action in
+            guard action == .delete else { return }
+            select(entry)
+            library.pendingDeletion = entry.id
+        }
     }
 }
