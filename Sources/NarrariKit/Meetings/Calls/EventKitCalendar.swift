@@ -16,8 +16,16 @@ public actor EventKitCalendar: CalendarSource {
         return found.map { event in
             CalendarEvent(
                 title: event.title ?? "", start: event.startDate, end: event.endDate, isAllDay: event.isAllDay,
-                attendees: (event.attendees ?? []).filter(Self.isOtherPerson).compactMap(\.name)
+                attendees: Self.people(of: event)
             )
+        }
+    }
+
+    // Some calendars leave the organiser out of the attendees, so they are read too, first, and once.
+    private static func people(of event: EKEvent) -> [String] {
+        let invited = ([event.organizer].compactMap { $0 } + (event.attendees ?? [])).filter(isOtherPerson).compactMap(\.name)
+        return invited.reduce(into: []) { names, name in
+            if !names.contains(name) { names.append(name) }
         }
     }
 
