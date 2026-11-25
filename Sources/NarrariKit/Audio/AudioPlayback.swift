@@ -4,9 +4,27 @@ import Observation
 @MainActor
 @Observable
 public final class AudioPlayback {
+    // Stretches of the audio heard alone, in order, such as one speaker's lines.
+    public struct Part: Sendable, Equatable {
+        public let id: String
+        public let stretches: [Range<TimeInterval>]
+
+        public init(id: String, stretches: [Range<TimeInterval>]) {
+            self.id = id
+            self.stretches = stretches
+        }
+
+        // The stretch to hear from this position: the one it is in, or the next; nil after the last.
+        public func stretch(at position: TimeInterval) -> Range<TimeInterval>? {
+            stretches.first { position < $0.upperBound }
+        }
+    }
+
     public private(set) var isPlaying = false
     public private(set) var position: TimeInterval = 0
     public private(set) var duration: TimeInterval = 0
+    // Set while a part plays or is paused; every other control plays the whole audio again.
+    public private(set) var part: Part?
 
     @ObservationIgnored private var urls: [URL] = []
     // A meeting's tracks play together; the first leads the position.
@@ -42,25 +60,29 @@ public final class AudioPlayback {
     }
 
     public func play() {
-        guard let player = openedPlayer() else { return }
-        if player.currentTime >= player.duration { players.forEach { $0.currentTime = 0 } }
-        let start = player.deviceCurrentTime + Self.startDelay
-        guard players.allSatisfy({ $0.play(atTime: start) }) else {
-            Log.failure("audio-play")
-            return
+        part = nil
+        resume()
+    }
+
+    // The same part pauses and resumes where it was; another one starts at its first stretch.
+    public func toggle(_ part: Part) {
+        if self.part?.id == part.id {
+            self.part = part
+            return isPlaying ? halt() : resume()
         }
-        isPlaying = true
-        startTicking()
+        guard let first = part.stretches.first, openedPlayer() != nil else { return }
+        self.part = part
+        move(to: first.lowerBound)
+        resume()
     }
 
     public func pause() {
-        players.forEach { $0.pause() }
-        isPlaying = false
-        ticker?.cancel()
-        syncPosition()
+        part = nil
+        halt()
     }
 
     public func stop() {
+        part = nil
         players.forEach {
             $0.stop()
             $0.currentTime = 0
@@ -71,15 +93,59 @@ public final class AudioPlayback {
     }
 
     public func seek(to fraction: Double) {
+        part = nil
         guard let player = openedPlayer() else { return }
-        let time = min(max(fraction, 0), 1) * player.duration
-        players.forEach { $0.currentTime = time }
-        syncPosition()
+        move(to: min(max(fraction, 0), 1) * player.duration)
     }
 
     public func skip(by seconds: TimeInterval) {
         guard duration > 0 else { return }
         seek(to: (position + seconds) / duration)
+    }
+
+    private func resume() {
+        guard let player = openedPlayer() else { return }
+        if player.currentTime >= player.duration { players.forEach { $0.currentTime = 0 } }
+        guard start() else { return }
+        isPlaying = true
+        startTicking()
+    }
+
+    // Every track starts on the same sample, also after a jump while playing.
+    private func start() -> Bool {
+        guard let player else { return false }
+        let start = player.deviceCurrentTime + Self.startDelay
+        guard players.allSatisfy({ $0.play(atTime: start) }) else {
+            Log.failure("audio-play")
+            return false
+        }
+        return true
+    }
+
+    private func halt() {
+        players.forEach { $0.pause() }
+        isPlaying = false
+        ticker?.cancel()
+        syncPosition()
+    }
+
+    private func move(to seconds: TimeInterval) {
+        players.forEach { $0.currentTime = seconds }
+        syncPosition()
+    }
+
+    // At the end of a stretch the part jumps to the next one, and after the last it pauses and the whole plays again.
+    private func followPart() {
+        guard let part else { return }
+        guard let next = part.stretch(at: position) else {
+            halt()
+            self.part = nil
+            return
+        }
+        guard position < next.lowerBound else { return }
+        players.forEach { $0.pause() }
+        move(to: next.lowerBound)
+        if !start() { halt() }
     }
 
     private func openedPlayer() -> AVAudioPlayer? {
@@ -105,8 +171,10 @@ public final class AudioPlayback {
                 if self.player?.isPlaying != true {
                     isPlaying = false
                     position = duration
+                    part = nil
                     return
                 }
+                followPart()
             }
         }
     }

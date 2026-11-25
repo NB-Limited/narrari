@@ -162,6 +162,25 @@ public final class MeetingPage {
         return Set(segments.indices.filter { segments[$0].start <= position && position < segments[$0].end })
     }
 
+    public func part(of speaker: String) -> AudioPlayback.Part {
+        Self.part(of: speaker, in: segments)
+    }
+
+    // One speaker's lines in the meeting's order; lines under a second apart play as one, so the player jumps only over others.
+    public nonisolated static func part(of speaker: String, in segments: [TranscriptSegment]) -> AudioPlayback.Part {
+        var stretches: [Range<TimeInterval>] = []
+        for line in segments.filter({ $0.speaker == speaker && $0.end > $0.start }).sorted(by: { $0.start < $1.start }) {
+            if let last = stretches.last, line.start < last.upperBound + joinSeconds {
+                stretches[stretches.count - 1] = last.lowerBound..<max(last.upperBound, line.end)
+            } else {
+                stretches.append(line.start..<line.end)
+            }
+        }
+        return AudioPlayback.Part(id: speaker, stretches: stretches)
+    }
+
+    nonisolated static let joinSeconds = 1.0
+
     public var matchCount: String? {
         matches.isEmpty ? nil : "\(matchIndex + 1) of \(matches.count)"
     }

@@ -160,6 +160,23 @@ struct MeetingPageTests {
         #expect(page.playingLines(at: first.start, isPlaying: false).isEmpty)
     }
 
+    @Test func playing_a_speaker_hears_their_lines_in_order_and_jumps_over_everyone_else() {
+        let segments = [
+            TranscriptSegment(start: 0, end: 2, speaker: "speaker-2", text: "One.", track: .system),
+            TranscriptSegment(start: 2.4, end: 4, speaker: "speaker-2", text: "Two.", track: .system),
+            TranscriptSegment(start: 4, end: 9, speaker: "owner", text: "Three.", track: .mic),
+            TranscriptSegment(start: 9.5, end: 10.1, speaker: "speaker-2", text: "Four.", track: .system),
+            TranscriptSegment(start: 11, end: 20, speaker: "owner", text: "Five.", track: .mic)
+        ]
+        let part = MeetingPage.part(of: "speaker-2", in: segments)
+
+        #expect(part.stretches == [0..<4, 9.5..<10.1])
+        #expect(part.stretch(at: 1) == 0..<4)
+        #expect(part.stretch(at: 4) == 9.5..<10.1)
+        #expect(part.stretch(at: 6) == 9.5..<10.1)
+        #expect(part.stretch(at: 10.1) == nil)
+    }
+
     @Test func notes_are_saved_as_they_are_typed() async throws {
         let page = await page(try await processed())
 

@@ -79,4 +79,26 @@ struct SpeakerRenamingTests {
         #expect(try await store.transcript(of: meeting.id).map(\.speaker) == ["speaker-2", "speaker-2"])
         #expect(try await store.voices(of: meeting.id).keys.sorted() == ["speaker-2"])
     }
+
+    @Test func merging_into_you_gives_you_their_lines_and_teaches_your_voice_nothing() async throws {
+        let owner = #"[{"id":"\#(UUID().uuidString)","name":"Mila Novak","isOwner":true,"prints":[{"meeting":"\#(UUID().uuidString)","values":[1,0]}]}]"#
+        try Data(owner.utf8).write(to: folder.url.appending(path: "people.json"))
+        let remembered = try await memory.people()
+        var meeting = Meeting(title: "Weekly", startedAt: .now, app: "", source: .call, template: "general", state: .ready)
+        meeting.speakers = [Meeting.Speaker(id: "owner", name: "Mila Novak", personId: remembered[0].id), Meeting.Speaker(id: "speaker-2", name: "Speaker 2")]
+        try await store.create(meeting, appName: "Zoom")
+        try await store.write(voices: ["owner": voicePrint(1), "speaker-2": voicePrint(2)], of: meeting.id)
+        try await store.write([
+            TranscriptSegment(start: 0, end: 1, speaker: "owner", text: "Hello.", track: .mic),
+            TranscriptSegment(start: 2, end: 3, speaker: "speaker-2", text: "Hi.", track: .system)
+        ], of: meeting.id)
+
+        try await renaming.merge("speaker-2", into: "owner", in: meeting.id)
+
+        #expect(try await store.meeting(meeting.id).speakers.map(\.id) == ["owner"])
+        #expect(try await store.transcript(of: meeting.id).map(\.speaker) == ["owner", "owner"])
+        #expect(try await store.voices(of: meeting.id) == ["owner": voicePrint(1)])
+        #expect(try await memory.people() == remembered)
+        #expect(try await store.meeting(meeting.id).speakerEdits == [Meeting.SpeakerEdit(speaker: "speaker-2", change: .merged(into: "owner"))])
+    }
 }
