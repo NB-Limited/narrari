@@ -23,7 +23,7 @@ struct SpeakerMenuTests {
     }
 
     @Test func a_close_voice_comes_first_then_who_was_invited_and_named_then_merges() {
-        #expect(titles(2) == ["Lena Fischer", "Jonas Weber", "Tomas Novak", "Maria Petrova", "Merge into Maria Petrova"])
+        #expect(titles(2) == ["Lena Fischer", "Jonas Weber", "Tomas Novak", "Maria Petrova", "Merge into You", "Merge into Maria Petrova"])
         #expect(SpeakerMenu.rows(for: meeting.speakers[2], in: meeting, people: [lena], query: "").first?.detail == "Close match")
     }
 
@@ -31,6 +31,13 @@ struct SpeakerMenuTests {
         let rows = SpeakerMenu.rows(for: meeting.speakers[1], in: meeting, people: [lena, tomas, maria], query: "")
         #expect(rows.first?.isChecked == true && rows.first?.detail == "Voice match")
         #expect(rows.last?.action == .notThisPerson)
+    }
+
+    @Test func everyone_on_the_calls_sound_before_the_split_is_not_offered_to_merge_into_you() {
+        var meeting = meeting
+        meeting.speakers = [.init(id: "owner", name: "Mila Novak"), .init(id: "others", name: "Speaker 2")]
+        let rows = SpeakerMenu.rows(for: meeting.speakers[1], in: meeting, people: [], query: "")
+        #expect(!rows.contains { $0.action == .merge(into: "owner") })
     }
 
     @Test func typing_filters_every_row_and_offers_a_new_person() {

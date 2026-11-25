@@ -33,7 +33,7 @@ struct MeetingTabs: View {
                 switch page.tab {
                 case .summary: SummaryTab(page: page, isRecording: isRecording, store: context.library.store)
                 case .transcript: TranscriptTab(page: page, context: context, isRecording: isRecording, scroll: scroll, followsLive: followsLive)
-                case .speakers: SpeakersTab(page: page, isRecording: isRecording)
+                case .speakers: SpeakersTab(page: page, playback: context.playback, isRecording: isRecording)
                 }
             }
             .padding(.top, MeetingWindowMetrics.contentTop)
@@ -297,6 +297,7 @@ private struct NotesField: View {
 
 private struct SpeakersTab: View {
     let page: MeetingPage
+    let playback: AudioPlayback
     let isRecording: Bool
 
     var body: some View {
@@ -307,16 +308,22 @@ private struct SpeakersTab: View {
             }
             if !isRecording, !page.speakerRows.isEmpty {
                 ForEach(page.speakerRows) { row in
-                    VStack(alignment: .leading, spacing: MeetingWindowMetrics.speakerDetailTop) {
-                        HStack(spacing: Space.s4 + Space.s2) {
-                            if row.speaker.id == MeetingTranscript.ownerID {
-                                Text(MeetingPage.name(of: row.speaker)).font(Typeface.bodyStrong).foregroundStyle(Color.ink)
-                            } else {
-                                SpeakerChip(speaker: row.speaker, page: page, isLarge: true)
+                    HStack(alignment: .nameLine, spacing: Space.s8) {
+                        VStack(alignment: .leading, spacing: MeetingWindowMetrics.speakerDetailTop) {
+                            HStack(spacing: Space.s4 + Space.s2) {
+                                if row.speaker.id == MeetingTranscript.ownerID {
+                                    Text(MeetingPage.name(of: row.speaker)).font(Typeface.bodyStrong).foregroundStyle(Color.ink)
+                                } else {
+                                    SpeakerChip(speaker: row.speaker, page: page, isLarge: true)
+                                }
+                                if row.speaker.isGuess == true { Tag(text: "Guess") }
                             }
-                            if row.speaker.isGuess == true { Tag(text: "Guess") }
+                            .alignmentGuide(.nameLine) { $0[VerticalAlignment.center] }
+                            Text(row.detail).font(Typeface.small).foregroundStyle(Color.muted)
                         }
-                        Text(row.detail).font(Typeface.small).foregroundStyle(Color.muted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        SpeakerPlayButton(speaker: row.speaker, page: page, playback: playback)
+                            .meetsEdge()
                     }
                     .padding(.vertical, SettingsGrid.rowPadding)
                     .frame(minHeight: SettingsGrid.rowMinHeight, alignment: .leading)
@@ -326,6 +333,38 @@ private struct SpeakersTab: View {
                     .foregroundStyle(Color.muted)
                     .padding(.top, MeetingWindowMetrics.quietTop)
             }
+        }
+    }
+}
+
+// The play button sits on the name line, whether the name is a chip or plain text.
+private extension VerticalAlignment {
+    private enum NameLine: AlignmentID {
+        static func defaultValue(in dimensions: ViewDimensions) -> CGFloat { dimensions[VerticalAlignment.center] }
+    }
+
+    static let nameLine = VerticalAlignment(NameLine.self)
+}
+
+// Plays only this speaker's lines on the page's one player, so the audio bar follows; any other control leaves it.
+private struct SpeakerPlayButton: View {
+    let speaker: Meeting.Speaker
+    let page: MeetingPage
+    let playback: AudioPlayback
+
+    var body: some View {
+        let part = page.part(of: speaker.id)
+        let isPlaying = playback.isPlaying && playback.part?.id == speaker.id
+        let whom = speaker.id == MeetingTranscript.ownerID ? "your lines" : speaker.name
+        let label = isPlaying ? "Pause \(whom)" : "Play \(whom)"
+        let unavailable = page.hasAudio ? nil : "No audio kept"
+        if !part.stretches.isEmpty {
+            Button { playback.toggle(part) } label: { Image(systemName: isPlaying ? "pause.circle" : "play.circle") }
+                .buttonStyle(.icon)
+                .disabled(unavailable != nil)
+                .accessibilityLabel(label)
+                .accessibilityHint(unavailable ?? "")
+                .iconLabel(unavailable ?? label)
         }
     }
 }

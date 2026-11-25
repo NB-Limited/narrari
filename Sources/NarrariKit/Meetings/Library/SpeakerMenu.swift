@@ -43,9 +43,12 @@ public enum SpeakerMenu {
         for (index, person) in known.enumerated() {
             offer(Row(title: person.name, group: index == 0 ? "People you named" : nil, action: .person(person.id)))
         }
-        let others = meeting.speakers.filter { $0.id != speaker.id && $0.id != MeetingTranscript.ownerID }
+        // Merging everyone on the call's sound into the owner is lost once speakers are found, so it is not offered.
+        let others = meeting.speakers.filter { other in
+            other.id != speaker.id && (other.id != MeetingTranscript.ownerID || speaker.id != MeetingTranscript.othersID)
+        }
         for (index, other) in others.enumerated() {
-            rows.append(Row(title: "Merge into \(other.name)", startsSection: index == 0, action: .merge(into: other.id)))
+            rows.append(Row(title: "Merge into \(MeetingPage.name(of: other))", startsSection: index == 0, action: .merge(into: other.id)))
         }
         if isSetByApp {
             rows.append(Row(title: "Not this person", startsSection: true, action: .notThisPerson))
