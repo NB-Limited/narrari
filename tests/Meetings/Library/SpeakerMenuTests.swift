@@ -22,15 +22,15 @@ struct SpeakerMenuTests {
         SpeakerMenu.rows(for: meeting.speakers[speaker], in: meeting, people: [lena, tomas, maria], query: typed).map(\.title)
     }
 
-    @Test func a_close_voice_comes_first_then_who_was_invited_and_named_then_merges() {
-        #expect(titles(2) == ["Lena Fischer", "Jonas Weber", "Tomas Novak", "Maria Petrova", "Merge into You", "Merge into Maria Petrova"])
+    @Test func a_close_voice_comes_first_then_who_was_invited_then_merges_and_last_the_people_named() {
+        #expect(titles(2) == ["Lena Fischer", "Jonas Weber", "Merge into You", "Merge into Maria Petrova", "Tomas Novak", "Maria Petrova"])
         #expect(SpeakerMenu.rows(for: meeting.speakers[2], in: meeting, people: [lena], query: "").first?.detail == "Close match")
     }
 
     @Test func a_name_the_app_set_is_checked_and_can_be_taken_back() {
         let rows = SpeakerMenu.rows(for: meeting.speakers[1], in: meeting, people: [lena, tomas, maria], query: "")
         #expect(rows.first?.isChecked == true && rows.first?.detail == "Voice match")
-        #expect(rows.last?.action == .notThisPerson)
+        #expect(rows.contains { $0.action == .notThisPerson })
     }
 
     @Test func everyone_on_the_calls_sound_before_the_split_is_not_offered_to_merge_into_you() {

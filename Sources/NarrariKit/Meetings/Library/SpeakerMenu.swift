@@ -39,10 +39,6 @@ public enum SpeakerMenu {
         for (index, name) in invited.enumerated() {
             offer(Row(title: name, group: index == 0 ? "Invited" : nil, action: .name(name)))
         }
-        let known = people.filter { !$0.isOwner && !named.contains($0.name.lowercased()) }
-        for (index, person) in known.enumerated() {
-            offer(Row(title: person.name, group: index == 0 ? "People you named" : nil, action: .person(person.id)))
-        }
         // Merging everyone on the call's sound into the owner is lost once speakers are found, so it is not offered.
         let others = meeting.speakers.filter { other in
             other.id != speaker.id && (other.id != MeetingTranscript.ownerID || speaker.id != MeetingTranscript.othersID)
@@ -52,6 +48,11 @@ public enum SpeakerMenu {
         }
         if isSetByApp {
             rows.append(Row(title: "Not this person", startsSection: true, action: .notThisPerson))
+        }
+        // Last, because it grows with every person named and would push the merges out of sight.
+        let known = people.filter { !$0.isOwner && !named.contains($0.name.lowercased()) }
+        for (index, person) in known.enumerated() {
+            offer(Row(title: person.name, group: index == 0 ? "People you named" : nil, action: .person(person.id)))
         }
         return filtered(rows, by: query)
     }
