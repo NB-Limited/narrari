@@ -59,6 +59,8 @@ struct MeetingBarContent: View {
                 Text(MeetingSurfaces.countdownText(secondsLeft: left)).onPillBaseline().padding(.leading, PillGeometry.recordingGap)
                 PillTextButton(title: "Keep recording") { meeting.keepRecording() }
                     .padding(.leading, PillGeometry.recordingGap)
+                PillTextButton(title: "Stop", isFilled: false, label: "Stop recording") { Task { await meeting.stop() } }
+                    .padding(.leading, PillGeometry.symbolGap)
             case .trouble(let trouble):
                 let label = PillLabel(trouble)
                 PillSymbol(name: label.symbol, isError: true)
