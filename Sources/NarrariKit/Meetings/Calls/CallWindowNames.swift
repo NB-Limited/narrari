@@ -109,8 +109,23 @@ public final class CallWindowNames {
                 name = String(name[..<open.lowerBound])
             }
         }
-        guard !name.isEmpty, name.caseInsensitiveCompare(ownerName) != .orderedSame else { return nil }
+        guard !name.isEmpty, !isOwner(name) else { return nil }
         return name
+    }
+
+    // A company list may read "Novak, Milena M." for Mila Novak: a word in common, and each other word of the owner's
+    // name starting as one of the listed name's does.
+    private func isOwner(_ name: String) -> Bool {
+        if name.caseInsensitiveCompare(ownerName) == .orderedSame { return true }
+        let own = Self.words(ownerName), listed = Self.words(name)
+        guard !own.isDisjoint(with: listed) else { return false }
+        let starts = Set(listed.subtracting(own).compactMap(\.first))
+        return own.subtracting(listed).allSatisfy { $0.first.map(starts.contains) == true }
+    }
+
+    private static func words(_ name: String) -> Set<String> {
+        let folded = name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+        return Set(folded.split { !$0.isLetter }.filter { $0.count > 1 }.map(String.init))
     }
 }
 

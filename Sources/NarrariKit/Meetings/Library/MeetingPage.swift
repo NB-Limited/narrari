@@ -176,7 +176,7 @@ public final class MeetingPage {
                 detectedLanguage = SpokenLanguage.main(of: SpokenLanguage.spoken(in: heard.map(\.text)))
             }
             segments = heard
-            summary = try await store.text(.summary, of: meeting.id)
+            summary = SummaryLayout.plain(try await store.text(.summary, of: meeting.id))
             if saving == nil { notes = try await store.text(.notes, of: meeting.id) }
             let tracks = [try await store.audio(.microphone, of: meeting.id), try await store.audio(.system, of: meeting.id)]
             audio = tracks.filter { FileManager.default.fileExists(atPath: $0.path) }
