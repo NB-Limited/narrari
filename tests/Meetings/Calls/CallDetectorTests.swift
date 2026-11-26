@@ -65,6 +65,22 @@ struct CallDetectorTests {
         await until { heard.events == [.started(app: "com.microsoft.teams2")] }
     }
 
+    // Siri's listener takes the microphone for seconds while a video plays; that is no call.
+    @Test func macOS_listening_for_siri_or_dictation_raises_no_call() async {
+        let (detector, listening) = await detector()
+
+        await processes.set([FakeProcesses.app("com.apple.CoreSpeech", input: true, output: false)])
+        clock.advance(by: .seconds(10))
+        await processes.set([zoom(input: true, output: true)])
+        await held()
+        clock.advance(by: .seconds(3))
+        await until { heard.events == [.started(app: "us.zoom.xos")] }
+        await detector.stop()
+        await listening.value
+
+        #expect(heard.events == [.started(app: "us.zoom.xos")])
+    }
+
     // Some apps let go of the microphone on mute, so the sound they still play keeps the call going.
     @Test(arguments: [true, false])
     func the_call_ends_only_once_its_app_has_released_the_microphone_and_stopped_playing(isStillPlaying: Bool) async {

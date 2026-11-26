@@ -13,6 +13,11 @@ public actor CallDetector {
 
     private static let hold: Duration = .seconds(3)
     private static let recheck: Duration = .seconds(2)
+    // macOS's own listeners for Siri, dictation and sound recognition take a microphone for seconds with no call behind it.
+    private static let systemListeners: Set = [
+        "com.apple.CoreSpeech", "com.apple.Siri", "com.apple.assistantd", "com.apple.accessibility.heard",
+        "com.apple.SpeechRecognitionCore.speechrecognitiond"
+    ]
 
     private let continuation: AsyncStream<CallEvent>.Continuation
     private let processes: any AudioProcessSource
@@ -82,7 +87,7 @@ public actor CallDetector {
     }
 
     private func others(reading reads: AudioProcessReads, of app: String? = nil) -> [AudioProcess] {
-        let ignored = Set(settings.value(MeetingsSettings.ignoredApps))
+        let ignored = Self.systemListeners.union(settings.value(MeetingsSettings.ignoredApps))
         let isOther = { [ownPID] (pid: pid_t, owner: String) in pid != ownPID && !owner.isEmpty && !ignored.contains(owner) && (app == nil || owner == app) }
         return processes.processes { isOther($0, Self.owner(of: $1)) ? reads : [] }
             .map { AudioProcess(pid: $0.pid, bundleID: Self.owner(of: $0.bundleID), isRunningInput: $0.isRunningInput, isRunningOutput: $0.isRunningOutput) }
