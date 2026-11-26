@@ -95,7 +95,17 @@ struct MeetingSurfacesTests {
         await session.stop()
     }
 
-    @Test(arguments: MeetingBar.allCases)
+    @Test func a_hidden_bar_draws_nothing_while_a_meeting_records_or_pauses_and_the_menu_bar_still_marks_it() async {
+        let surfaces = surfaces(.hidden)
+        await session.start()
+        #expect(surfaces.pill == nil && surfaces.chip == nil && !surfaces.showsPill && surfaces.marksRecording)
+
+        session.pause()
+        #expect(surfaces.pill == nil && surfaces.chip == nil && surfaces.marksRecording)
+        await session.stop()
+    }
+
+    @Test(arguments: [MeetingBar.pill, .chip])
     func a_click_on_the_bar_opens_the_meeting_it_records_except_beside_a_dictation(bar: MeetingBar) async throws {
         let surfaces = surfaces(bar)
         let opened = Notes<UUID>()
@@ -126,7 +136,11 @@ struct MeetingSurfacesTests {
         await meeting.screen(isWatched: false)
         await until { !surfaces.isHidden }
         #expect(surfaces.showsDictation && surfaces.marksRecording)
-        #expect(bar == .pill ? surfaces.isFolded : surfaces.chip == .recording)
+        switch bar {
+        case .pill: #expect(surfaces.isFolded)
+        case .chip: #expect(surfaces.chip == .recording)
+        case .hidden: #expect(surfaces.pill == nil && surfaces.chip == nil)
+        }
         await finishDictation()
         await session.stop()
     }
@@ -160,8 +174,8 @@ struct MeetingSurfacesTests {
         output.freeze(all: true)
         await record(8, replay, output, checkedBy: rig.recorderClock)
         let stopped = MeetingSurfaces.Bar.trouble(RecordingTrouble(track: .system, kind: .stopped))
-        #expect((bar == .pill ? surfaces.pill : surfaces.chip) == stopped)
-        #expect(bar == .pill ? surfaces.pillTakesClicks : surfaces.isChipOpen)
+        #expect((bar == .chip ? surfaces.chip : surfaces.pill) == stopped)
+        #expect(bar == .chip ? surfaces.isChipOpen : surfaces.pillTakesClicks)
         #expect(stopped.announcement == "Other people's sound stopped recording")
 
         output.thaw()

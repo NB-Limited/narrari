@@ -40,6 +40,14 @@ public final class MeetingSurfaces {
             if case .notice = self { return false }
             return true
         }
+
+        // What a hidden bar still shows, because a recording that fails unseen is lost.
+        var isProblem: Bool {
+            switch self {
+            case .notice(.failed), .trouble: true
+            case .recording, .paused, .callEnded, .notice(.liveText): false
+            }
+        }
     }
 
     public struct Offer: Sendable, Equatable {
@@ -92,7 +100,13 @@ public final class MeetingSurfaces {
         }
     }
 
-    public var pill: Bar? { style == .pill ? bar : nil }
+    public var pill: Bar? {
+        switch style {
+        case .pill: bar
+        case .chip: nil
+        case .hidden: bar.flatMap { $0.isProblem ? $0 : nil }
+        }
+    }
 
     public var chip: Bar? { style == .chip ? bar : nil }
 

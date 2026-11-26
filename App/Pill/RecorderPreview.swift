@@ -32,6 +32,7 @@ struct RecorderPreview: View {
         switch meetingBar {
         case .pill: "Preview of the meeting in the recorder pill"
         case .chip: "Preview of the meeting in the corner chip"
+        case .hidden: "Preview of the screen with the meeting bar hidden"
         case nil: "Preview of the \(look.name) recorder"
         }
     }
@@ -92,7 +93,7 @@ struct RecorderPreview: View {
     }()
 }
 
-// The meeting bar as it sits on screen: the pill at the bottom centre, the chip in the top right corner.
+// The meeting bar as it sits on screen: the pill at the bottom centre, the chip in the top right corner, nothing when hidden.
 private struct StillMeetingBar: View {
     let bar: MeetingBar
     let look: PillLook
@@ -108,6 +109,8 @@ private struct StillMeetingBar: View {
                     .padding(.top, MeetingMetrics.cornerBelowMenuBar)
                     .padding(.trailing, MeetingMetrics.cornerFromEdge)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            case .hidden:
+                EmptyView()
             }
         }
         .allowsHitTesting(false)

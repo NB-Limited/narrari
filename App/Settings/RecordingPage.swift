@@ -31,7 +31,10 @@ struct RecordingPage: View {
                     SwitchRow(title: "Show live text", detail: "On the meeting's page as it records.", isOn: $model.showsLiveText)
                     RowBlock {
                         RowLine(title: "Meeting bar") {
-                            Popup(label: "Meeting bar", selection: $model.bar, options: [(.pill, "Recorder pill"), (.chip, "Corner chip")])
+                            Popup(label: "Meeting bar", selection: $model.bar, options: [(.pill, "Recorder pill"), (.chip, "Corner chip"), (.hidden, "Hidden")])
+                        }
+                        if model.bar == .hidden {
+                            QuietLine(text: "Only the menu bar icon marks the recording. A problem with it still shows.")
                         }
                         RecorderPreview(look: looks.look, colour: looks.colour, showsWords: false, meetingBar: model.bar)
                             .padding(.top, PillPreviewMetrics.top)
